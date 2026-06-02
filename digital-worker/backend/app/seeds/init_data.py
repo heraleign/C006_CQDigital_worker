@@ -1,26 +1,15 @@
 """Initial data seeder for the database."""
-import random
-from datetime import datetime, timedelta, date
 from app.utils.logger import logger
+from app.seeds.seed_all import seed
 
 
-async def seed_database():
-    """Seed initial data into the database.
-
-    This function populates the database with initial reference data.
-    In mock mode, data is generated on-the-fly by MockDataService.
-    """
+def seed_database():
+    """Seed initial data into the database."""
     logger.info("Seeding database with initial data...")
-    logger.info("Mock mode enabled - data will be generated dynamically")
-    logger.info("To seed real database, set USE_MOCK=false and configure database connection")
-
-    return {
-        "status": "completed",
-        "mode": "mock",
-        "message": "Data is generated dynamically by MockDataService",
-    }
+    seed()
+    logger.info("Database seeding completed")
+    return {"status": "completed", "mode": "real", "message": "Database seeded with real data"}
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(seed_database())
+    seed_database()

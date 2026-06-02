@@ -1,7 +1,8 @@
 """Assistant service for chat and session management."""
 from typing import Any, Optional
 from datetime import datetime
-from app.services.mock_data import MockDataService
+from app.config import settings
+from app.services.database_service import DatabaseService
 from app.services.ai_service import ai_service
 
 
@@ -9,7 +10,11 @@ class AssistantService:
     """Service for assistant module operations."""
 
     def __init__(self):
-        self.mock = MockDataService()
+        if not settings.USE_MOCK:
+            self.mock = DatabaseService()
+        else:
+            from app.services.mock_data import MockDataService
+            self.mock = MockDataService()
         self._sessions_cache = None
 
     @property

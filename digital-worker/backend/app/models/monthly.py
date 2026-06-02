@@ -241,6 +241,7 @@ class MaConfigStage(Base):
     sort_order = Column(Integer, default=0, comment="排序")
     status = Column(String(20), default="pending", comment="状态: completed/pending/running")
     completed_at = Column(DateTime, comment="完成时间")
+    milestones = relationship("MaConfigMilestone", back_populates="stage")
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -257,7 +258,8 @@ class MaConfigMilestone(Base):
     status = Column(String(20), default="pending", comment="状态: completed/pending/running")
     progress_pct = Column(Float, default=0, comment="完成百分比")
     completed_at = Column(DateTime, comment="完成时间")
-    stage = relationship("MaConfigStage", backref="milestones")
+    stage = relationship("MaConfigStage", back_populates="milestones")
+    work_plans = relationship("MaConfigWorkPlan", back_populates="milestone")
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -276,7 +278,8 @@ class MaConfigWorkPlan(Base):
     is_system_task = Column(Boolean, default=False, comment="是否系统任务")
     status = Column(String(20), default="pending", comment="状态: completed/pending/running")
     completed_at = Column(DateTime, comment="完成时间")
-    milestone = relationship("MaConfigMilestone", backref="work_plans")
+    milestone = relationship("MaConfigMilestone", back_populates="work_plans")
+    tasks = relationship("MaConfigTask", back_populates="work_plan")
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
@@ -294,6 +297,6 @@ class MaConfigTask(Base):
     status = Column(String(20), default="pending", comment="状态: completed/pending/running/paused/manual_skipped")
     start_time = Column(DateTime, comment="开始时间")
     end_time = Column(DateTime, comment="结束时间")
-    work_plan = relationship("MaConfigWorkPlan", backref="tasks")
+    work_plan = relationship("MaConfigWorkPlan", back_populates="tasks")
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)

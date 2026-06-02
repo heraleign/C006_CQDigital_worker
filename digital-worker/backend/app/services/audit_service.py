@@ -1,13 +1,18 @@
 """Audit service wrapping MockDataService for all audit-related operations."""
 from typing import Any, Optional
-from app.services.mock_data import MockDataService
+from app.config import settings
+from app.services.database_service import DatabaseService
 
 
 class AuditService:
     """Service for audit module operations."""
 
     def __init__(self):
-        self.mock = MockDataService()
+        if not settings.USE_MOCK:
+            self.mock = DatabaseService()
+        else:
+            from app.services.mock_data import MockDataService
+            self.mock = MockDataService()
         self._fields_cache = None
         self._rules_cache = None
         self._tasks_cache = None

@@ -159,6 +159,11 @@ async def seed_ledger_data(db: AsyncSession):
 
     await db.flush()
 
+    # Track end_times per work_plan to compute completed_at
+    wp_end_times: dict[int, list[tuple[int, datetime]]] = {}
+    ms_end_times: dict[int, list[tuple[int, datetime]]] = {}
+    st_end_times: dict[int, list[tuple[int, datetime]]] = {}
+
     for s_idx, m_idx, p_idx, wp in work_plans:
         task_count = random.randint(1, 4)
         for t_idx in range(task_count):
@@ -183,6 +188,40 @@ async def seed_ledger_data(db: AsyncSession):
                 end_time=end_time,
             )
             db.add(task)
+            if end_time:
+                wp_end_times.setdefault(wp.id, []).append((t_idx + 1, end_time))
+
+    await db.flush()
+
+    # --- Compute work_plan completed_at ---
+    for wp_id, times in wp_end_times.items():
+        # Find the task with the highest sort_order
+        latest = max(times, key=lambda x: x[0])
+        wp_result = await db.execute(select(MaConfigWorkPlan).where(MaConfigWorkPlan.id == wp_id))
+        wp = wp_result.scalar_one()
+        wp.completed_at = latest[1]
+        # Track for milestone
+        ms_end_times.setdefault(wp.milestone_id, []).append((wp.seq_no, latest[1]))
+
+    await db.flush()
+
+    # --- Compute milestone completed_at ---
+    for ms_id, times in ms_end_times.items():
+        latest = max(times, key=lambda x: x[0])
+        ms_result = await db.execute(select(MaConfigMilestone).where(MaConfigMilestone.id == ms_id))
+        ms = ms_result.scalar_one()
+        ms.completed_at = latest[1]
+        # Track for stage
+        st_end_times.setdefault(ms.stage_id, []).append((ms.sort_order, latest[1]))
+
+    await db.flush()
+
+    # --- Compute stage completed_at ---
+    for st_id, times in st_end_times.items():
+        latest = max(times, key=lambda x: x[0])
+        st_result = await db.execute(select(MaConfigStage).where(MaConfigStage.id == st_id))
+        stage = st_result.scalar_one()
+        stage.completed_at = latest[1]
 
     await db.commit()
     print("Ledger seed data inserted successfully.")

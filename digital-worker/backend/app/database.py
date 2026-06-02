@@ -33,10 +33,10 @@ def _get_session_factory():
     engine = _get_engine()
     if engine is None:
         return None
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
     return async_sessionmaker(
         engine,
-        class_=sqlalchemy.ext.asyncio.AsyncSession,  # noqa
+        class_=AsyncSession,
         expire_on_commit=False,
     )
 

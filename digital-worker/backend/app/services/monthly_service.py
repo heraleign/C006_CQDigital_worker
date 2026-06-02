@@ -1,14 +1,19 @@
 """Monthly service wrapping MockDataService."""
 from typing import Any, Optional
 from datetime import date
-from app.services.mock_data import MockDataService
+from app.config import settings
+from app.services.database_service import DatabaseService
 
 
 class MonthlyService:
     """Service for monthly module operations."""
 
     def __init__(self):
-        self.mock = MockDataService()
+        if not settings.USE_MOCK:
+            self.mock = DatabaseService()
+        else:
+            from app.services.mock_data import MockDataService
+            self.mock = MockDataService()
         self._tasks_cache = None
         self._reports_cache = None
 

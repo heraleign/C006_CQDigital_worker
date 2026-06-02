@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Digital Worker"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
-    USE_MOCK: bool = True
+    USE_MOCK: bool = False
 
     class Config:
         env_file = ".env"

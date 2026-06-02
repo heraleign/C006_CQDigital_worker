@@ -229,8 +229,14 @@ class LedgerService:
         for key, value in data.items():
             if value is not None and hasattr(item, key):
                 setattr(item, key, value)
+        # If status changed to completed and no end_time, set it now
+        if data.get("status") == "completed" and item.end_time is None:
+            from datetime import datetime
+            item.end_time = datetime.now()
         await db.commit()
         await db.refresh(item)
+        # Cascade completion times up the hierarchy
+        await self._cascade_completion_times(db, item)
         return self._task_to_dict(item)
 
     async def delete_task(self, db: AsyncSession, task_id: int):
@@ -293,6 +299,12 @@ class LedgerService:
                     total_tasks += len(tasks)
                     completed_tasks += t_completed
 
+                    # Aggregate start/end times from child tasks
+                    task_starts = [t.start_time for t in tasks if t.start_time]
+                    task_ends = [t.end_time for t in tasks if t.end_time]
+                    wp_start = min(task_starts) if task_starts else None
+                    wp_end = max(task_ends) if task_ends else None
+
                     task_responses = []
                     for t in tasks:
                         task_responses.append({
@@ -313,11 +325,23 @@ class LedgerService:
                         "task_mode": wp.task_mode,
                         "is_system_task": wp.is_system_task,
                         "status": wp.status,
+                        "start_time": wp_start.isoformat() if wp_start else None,
+                        "end_time": wp_end.isoformat() if wp_end else None,
                         "tasks": task_responses,
                     })
 
                 # Compute milestone progress
                 ms_progress = (wp_completed / len(work_plans) * 100) if work_plans else 0
+
+                # Aggregate milestone start/end from all child work plan tasks
+                ms_task_starts = []
+                ms_task_ends = []
+                for wp2 in work_plans:
+                    for t2 in (wp2.tasks or []):
+                        if t2.start_time: ms_task_starts.append(t2.start_time)
+                        if t2.end_time: ms_task_ends.append(t2.end_time)
+                ms_start = min(ms_task_starts) if ms_task_starts else None
+                ms_end = max(ms_task_ends) if ms_task_ends else None
 
                 milestone_responses.append({
                     "milestone_id": ms.milestone_code,
@@ -325,11 +349,24 @@ class LedgerService:
                     "sort_order": ms.sort_order,
                     "status": ms.status,
                     "progress_pct": round(ms_progress, 1),
+                    "start_time": ms_start.isoformat() if ms_start else None,
+                    "end_time": ms_end.isoformat() if ms_end else None,
                     "work_plans": plan_responses,
                 })
 
             # Compute stage progress
             stage_progress = (completed_milestone_count / milestone_count * 100) if milestone_count else 0
+
+            # Aggregate stage start/end from all child tasks
+            stg_starts = []
+            stg_ends = []
+            for ms2 in milestones:
+                for wp2 in (ms2.work_plans or []):
+                    for t2 in (wp2.tasks or []):
+                        if t2.start_time: stg_starts.append(t2.start_time)
+                        if t2.end_time: stg_ends.append(t2.end_time)
+            stg_start = min(stg_starts) if stg_starts else None
+            stg_end = max(stg_ends) if stg_ends else None
 
             stage_responses.append({
                 "stage_id": stage.stage_code,
@@ -337,6 +374,8 @@ class LedgerService:
                 "sort_order": stage.sort_order,
                 "status": stage.status,
                 "progress_pct": round(stage_progress, 1),
+                "start_time": stg_start.isoformat() if stg_start else None,
+                "end_time": stg_end.isoformat() if stg_end else None,
                 "milestone_count": milestone_count,
                 "completed_milestone_count": completed_milestone_count,
                 "milestones": milestone_responses,
@@ -358,6 +397,64 @@ class LedgerService:
             "stages": stage_responses,
         }
 
+    # ==================== Cascade Completion Times ====================
+
+    async def _cascade_completion_times(self, db: AsyncSession, task: MaConfigTask):
+        """Recalculate completed_at for work_plan, milestone, and stage
+        based on the latest completed child.
+        """
+        # --- Work Plan ---
+        wp_result = await db.execute(
+            select(MaConfigWorkPlan).where(MaConfigWorkPlan.id == task.plan_id)
+        )
+        work_plan = wp_result.scalar_one_or_none()
+        if not work_plan:
+            return
+
+        # Find latest completed task under this work plan
+        t_result = await db.execute(
+            select(MaConfigTask)
+            .where(MaConfigTask.plan_id == work_plan.id, MaConfigTask.status == "completed")
+            .order_by(MaConfigTask.sort_order.desc())
+        )
+        latest_task = t_result.scalars().first()
+        work_plan.completed_at = latest_task.end_time if latest_task else None
+        await db.commit()
+
+        # --- Milestone ---
+        ms_result = await db.execute(
+            select(MaConfigMilestone).where(MaConfigMilestone.id == work_plan.milestone_id)
+        )
+        milestone = ms_result.scalar_one_or_none()
+        if not milestone:
+            return
+
+        wp_result2 = await db.execute(
+            select(MaConfigWorkPlan)
+            .where(MaConfigWorkPlan.milestone_id == milestone.id, MaConfigWorkPlan.status == "completed")
+            .order_by(MaConfigWorkPlan.seq_no.desc())
+        )
+        latest_wp = wp_result2.scalars().first()
+        milestone.completed_at = latest_wp.completed_at if latest_wp else None
+        await db.commit()
+
+        # --- Stage ---
+        st_result = await db.execute(
+            select(MaConfigStage).where(MaConfigStage.id == milestone.stage_id)
+        )
+        stage = st_result.scalar_one_or_none()
+        if not stage:
+            return
+
+        ms_result2 = await db.execute(
+            select(MaConfigMilestone)
+            .where(MaConfigMilestone.stage_id == stage.id, MaConfigMilestone.status == "completed")
+            .order_by(MaConfigMilestone.sort_order.desc())
+        )
+        latest_ms = ms_result2.scalars().first()
+        stage.completed_at = latest_ms.completed_at if latest_ms else None
+        await db.commit()
+
     # ==================== Helpers ====================
 
     @staticmethod
@@ -368,6 +465,7 @@ class LedgerService:
             "name": item.name,
             "sort_order": item.sort_order,
             "status": item.status,
+            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         }
@@ -382,6 +480,7 @@ class LedgerService:
             "sort_order": item.sort_order,
             "status": item.status,
             "progress_pct": item.progress_pct,
+            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         }
@@ -398,6 +497,7 @@ class LedgerService:
             "task_mode": item.task_mode,
             "is_system_task": item.is_system_task,
             "status": item.status,
+            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         }

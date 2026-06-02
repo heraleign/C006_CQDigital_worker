@@ -1,13 +1,18 @@
 """Knowledge service for root cause case library operations."""
 from typing import Any, Optional
-from app.services.mock_data import MockDataService
+from app.config import settings
+from app.services.database_service import DatabaseService
 
 
 class KnowledgeService:
     """Service for knowledge/case library operations."""
 
     def __init__(self):
-        self.mock = MockDataService()
+        if not settings.USE_MOCK:
+            self.mock = DatabaseService()
+        else:
+            from app.services.mock_data import MockDataService
+            self.mock = MockDataService()
         self._cases_cache = None
 
     @property

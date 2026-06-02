@@ -2,14 +2,19 @@
 from fastapi import APIRouter, Query, Path, HTTPException
 from typing import Optional
 from app.utils.response import success_response, paginated_response
-from app.services.mock_data import MockDataService
+from app.config import settings
+from app.services.database_service import DatabaseService
 from app.schemas.system import (
     UserCreate, UserUpdate, UserResponse,
     ToolConfigCreate, ToolConfigUpdate, ToolConfigResponse,
 )
 
 router = APIRouter()
-mock = MockDataService()
+if not settings.USE_MOCK:
+    mock = DatabaseService()
+else:
+    from app.services.mock_data import MockDataService
+    mock = MockDataService()
 
 
 # ==================== Tools Config Endpoints ====================

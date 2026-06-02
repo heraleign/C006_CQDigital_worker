@@ -60,3 +60,12 @@ If you genuinely think a convention is harmful, surface it. Don't fork silently.
 "Completed" is wrong if anything was skipped silently.
 "Tests pass" is wrong if any were skipped.
 Default to surfacing uncertainty, not hiding it.
+
+## Rule 13 — Write tool failure: switch immediately
+If the Write tool fails with "missing parameter" or parameter-not-transmitted errors,
+do NOT retry it. Immediately switch to Bash + Python heredoc/cat to write files.
+Repeatedly retrying the same failing tool is wasted effort. The fallback is:
+  "/c/Program Files/Python312/python" << 'PYEOF'
+  (content)
+  PYEOF
+for Python scripts, or Python -c for smaller snippets with careful quoting.

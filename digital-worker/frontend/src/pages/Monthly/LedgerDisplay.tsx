@@ -35,6 +35,8 @@ interface LedgerWorkPlan {
   task_mode: string;
   is_system_task: boolean;
   status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
+  start_time?: string;
+  end_time?: string;
   tasks: LedgerTask[];
 }
 
@@ -44,6 +46,8 @@ interface LedgerMilestone {
   sort_order: number;
   status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
   progress_pct: number;
+  start_time?: string;
+  end_time?: string;
   work_plans: LedgerWorkPlan[];
 }
 
@@ -53,6 +57,8 @@ interface LedgerStage {
   sort_order: number;
   status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
   progress_pct: number;
+  start_time?: string;
+  end_time?: string;
   milestone_count: number;
   completed_milestone_count: number;
   milestones: LedgerMilestone[];
@@ -173,6 +179,20 @@ const StageCard: React.FC<{
           {stage.milestones.reduce((sum, m) => sum + m.work_plans.length, 0)} 计划
         </Text>
       </div>
+      <div style={{ marginTop: 4, fontSize: 11 }}>
+        {stage.start_time && (
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            <ClockCircleOutlined style={{ marginRight: 2 }} />
+            {dayjs(stage.start_time).format('MM-DD HH:mm')}
+          </Text>
+        )}
+        {stage.end_time && (
+          <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+            <CheckCircleOutlined style={{ marginRight: 2 }} />
+            {dayjs(stage.end_time).format('MM-DD HH:mm')}
+          </Text>
+        )}
+      </div>
     </Card>
   );
 };
@@ -215,6 +235,22 @@ const MilestonePanel: React.FC<{
             <Text type="secondary" style={{ fontSize: 12, marginLeft: 12 }}>
               作业计划 {completedPlans}/{totalPlans}
             </Text>
+          </div>
+          <div style={{ marginTop: 4, paddingLeft: 24 }}>
+            <Space size="middle">
+              {milestone.start_time && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <ClockCircleOutlined style={{ marginRight: 4 }} />
+                  开始: {dayjs(milestone.start_time).format('MM-DD HH:mm')}
+                </Text>
+              )}
+              {milestone.end_time && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <CheckCircleOutlined style={{ marginRight: 4 }} />
+                  完成: {dayjs(milestone.end_time).format('MM-DD HH:mm')}
+                </Text>
+              )}
+            </Space>
           </div>
         </Col>
         <Col>
@@ -287,6 +323,20 @@ const WorkPlanTable: React.FC<{
               {v}
             </Tag>
           ),
+        },
+        {
+          title: '开始时间',
+          dataIndex: 'start_time',
+          width: 120,
+          align: 'center',
+          render: (v?: string) => (v ? dayjs(v).format('MM-DD HH:mm') : <Text type="secondary">-</Text>),
+        },
+        {
+          title: '完成时间',
+          dataIndex: 'end_time',
+          width: 120,
+          align: 'center',
+          render: (v?: string) => (v ? dayjs(v).format('MM-DD HH:mm') : <Text type="secondary">-</Text>),
         },
         {
           title: '任务数',
@@ -529,7 +579,7 @@ const LedgerDisplay: React.FC = () => {
             <Space align="center">
               <BarChartOutlined style={{ fontSize: 22, color: '#1677ff' }} />
               <Title level={4} style={{ margin: 0 }}>
-                月账进度 — {overview.acct_month}
+                月账进度
               </Title>
               <Select
                 value={selectedMonth}
