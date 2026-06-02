@@ -45,14 +45,14 @@ const TaskConfigTab: React.FC = () => {
   const fetchStages = useCallback(async () => {
     try {
       const res = await monthlyApi.getStages();
-      setStages(res?.data?.items || res?.items || res?.data || res || []);
+      setStages(res?.data?.items || res?.data || []);
     } catch { /* ignore */ }
   }, []);
 
   const fetchMilestones = useCallback(async (stageId?: string) => {
     try {
       const res = await monthlyApi.getConfigMilestones({ stage_id: stageId });
-      const items = res?.data?.items || res?.items || res?.data || res || [];
+      const items = res?.data?.items || res?.data || [];
       setMilestones(items);
     } catch { /* ignore */ }
   }, []);
@@ -60,7 +60,7 @@ const TaskConfigTab: React.FC = () => {
   const fetchPlans = useCallback(async (milestoneId?: string) => {
     try {
       const res = await monthlyApi.getConfigWorkPlans({ milestone_id: milestoneId });
-      const items = res?.data?.items || res?.items || res?.data || res || [];
+      const items = res?.data?.items || res?.data || [];
       setPlans(items.map((i: any) => ({ plan_id: i.plan_id, name: i.name, milestone_id: i.milestone_id })));
     } catch { /* ignore */ }
   }, []);
@@ -73,7 +73,7 @@ const TaskConfigTab: React.FC = () => {
         milestone_id: filterMilestoneId,
         plan_id: filterPlanId,
       });
-      setData(res?.data?.items || res?.items || res?.data || res || []);
+      setData(res?.data?.items || res?.data || []);
     } catch {
       message.error('获取任务数据失败');
     } finally {

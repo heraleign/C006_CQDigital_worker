@@ -20,7 +20,7 @@ const StageConfigTab: React.FC = () => {
     setLoading(true);
     try {
       const res = await monthlyApi.getStages();
-      setData(res?.data?.items || res?.items || res?.data || res || []);
+      setData(res?.data?.items || res?.data || []);
     } catch {
       message.error('获取阶段数据失败');
     } finally {

@@ -28,7 +28,7 @@ const MilestoneConfigTab: React.FC = () => {
   const fetchStages = useCallback(async () => {
     try {
       const res = await monthlyApi.getStages();
-      const items = res?.data?.items || res?.items || res?.data || res || [];
+      const items = res?.data?.items || res?.data || [];
       setStages(items);
     } catch {
       // ignore
@@ -39,7 +39,7 @@ const MilestoneConfigTab: React.FC = () => {
     setLoading(true);
     try {
       const res = await monthlyApi.getConfigMilestones({ stage_id: filterStageId });
-      setData(res?.data?.items || res?.items || res?.data || res || []);
+      setData(res?.data?.items || res?.data || []);
     } catch {
       message.error('获取里程碑数据失败');
     } finally {

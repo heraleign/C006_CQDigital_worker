@@ -171,27 +171,33 @@ const StageCard: React.FC<{
         strokeColor={color}
         format={(p) => `${p}%`}
       />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          里程碑 {stage.completed_milestone_count}/{stage.milestone_count}
-        </Text>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          {stage.milestones.reduce((sum, m) => sum + m.work_plans.length, 0)} 计划
-        </Text>
-      </div>
-      <div style={{ marginTop: 4, fontSize: 11 }}>
-        {stage.start_time && (
-          <Text type="secondary" style={{ fontSize: 11 }}>
-            <ClockCircleOutlined style={{ marginRight: 2 }} />
-            {dayjs(stage.start_time).format('MM-DD HH:mm')}
+      <div style={{ marginTop: 4 }}>
+        <div>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            里程碑 {stage.completed_milestone_count}/{stage.milestone_count}
           </Text>
-        )}
-        {stage.end_time && (
-          <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
-            <CheckCircleOutlined style={{ marginRight: 2 }} />
-            {dayjs(stage.end_time).format('MM-DD HH:mm')}
+          <Text type="secondary" style={{ fontSize: 12, marginLeft: 4, marginRight: 4 }}>·</Text>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {stage.milestones.reduce((sum, m) => sum + m.work_plans.length, 0)} 计划
           </Text>
-        )}
+        </div>
+        <div style={{ marginTop: 2, display: 'flex', gap: 10 }}>
+          {stage.start_time != null && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              <ClockCircleOutlined style={{ marginRight: 2 }} />
+              {dayjs(stage.start_time).format('MM-DD HH:mm')}
+            </Text>
+          )}
+          {stage.start_time != null && stage.end_time != null && (
+            <Text type="secondary" style={{ fontSize: 11 }}>→</Text>
+          )}
+          {stage.end_time != null && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              <CheckCircleOutlined style={{ marginRight: 2 }} />
+              {dayjs(stage.end_time).format('MM-DD HH:mm')}
+            </Text>
+          )}
+        </div>
       </div>
     </Card>
   );
@@ -226,28 +232,29 @@ const MilestonePanel: React.FC<{
             <StatusBadge status={milestone.status} />
           </Space>
           <div style={{ marginTop: 6, paddingLeft: 24 }}>
-            <Progress
-              percent={milestone.progress_pct}
-              size="small"
-              style={{ width: 200 }}
-              format={(p) => `${p}%`}
-            />
-            <Text type="secondary" style={{ fontSize: 12, marginLeft: 12 }}>
-              作业计划 {completedPlans}/{totalPlans}
-            </Text>
-          </div>
-          <div style={{ marginTop: 4, paddingLeft: 24 }}>
-            <Space size="middle">
+            <Space size="middle" align="center">
+              <Progress
+                percent={milestone.progress_pct}
+                size="small"
+                style={{ width: 160 }}
+                format={(p) => `${p}%`}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                作业计划 {completedPlans}/{totalPlans}
+              </Text>
               {milestone.start_time && (
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  <ClockCircleOutlined style={{ marginRight: 4 }} />
-                  开始: {dayjs(milestone.start_time).format('MM-DD HH:mm')}
+                  <ClockCircleOutlined style={{ marginRight: 2 }} />
+                  {dayjs(milestone.start_time).format('MM-DD HH:mm')}
                 </Text>
+              )}
+              {milestone.start_time && milestone.end_time && (
+                <Text type="secondary" style={{ fontSize: 12 }}>→</Text>
               )}
               {milestone.end_time && (
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  <CheckCircleOutlined style={{ marginRight: 4 }} />
-                  完成: {dayjs(milestone.end_time).format('MM-DD HH:mm')}
+                  <CheckCircleOutlined style={{ marginRight: 2 }} />
+                  {dayjs(milestone.end_time).format('MM-DD HH:mm')}
                 </Text>
               )}
             </Space>
@@ -278,6 +285,7 @@ const WorkPlanTable: React.FC<{
       rowKey="plan_id"
       size="small"
       pagination={false}
+      scroll={{ x: 'max-content' }}
       expandable={{
         expandedRowRender: (record: LedgerWorkPlan) => (
           <TaskListTable tasks={record.tasks} onRefresh={onRefresh} />

@@ -44,14 +44,14 @@ const WorkPlanConfigTab: React.FC = () => {
   const fetchStages = useCallback(async () => {
     try {
       const res = await monthlyApi.getStages();
-      setStages(res?.data?.items || res?.items || res?.data || res || []);
+      setStages(res?.data?.items || res?.data || []);
     } catch { /* ignore */ }
   }, []);
 
   const fetchMilestones = useCallback(async (stageId?: string) => {
     try {
       const res = await monthlyApi.getConfigMilestones({ stage_id: stageId });
-      const items = res?.data?.items || res?.items || res?.data || res || [];
+      const items = res?.data?.items || res?.data || [];
       setMilestones(items);
     } catch { /* ignore */ }
   }, []);
@@ -63,7 +63,7 @@ const WorkPlanConfigTab: React.FC = () => {
         stage_id: filterStageId,
         milestone_id: filterMilestoneId,
       });
-      setData(res?.data?.items || res?.items || res?.data || res || []);
+      setData(res?.data?.items || res?.data || []);
     } catch {
       message.error('获取作业计划数据失败');
     } finally {
@@ -108,7 +108,7 @@ const WorkPlanConfigTab: React.FC = () => {
     setParsing(true);
     try {
       const res = await monthlyApi.parseTemplate({ template });
-      const tasks = res?.data?.tasks || res?.tasks || [];
+      const tasks = res?.data?.tasks || [];
       setParsedTasks(tasks);
       message.success(`解析成功，共 ${tasks.length} 个任务`);
     } catch {

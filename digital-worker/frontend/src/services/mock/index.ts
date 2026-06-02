@@ -583,7 +583,7 @@ function generateConfigTasks(params?: any) {
 }
 
 function parseTemplateMock(template: string) {
-  const tasks = [];
+  const tasks: any[] = [];
   let order = 1;
   // TDP tasks
   const tdpMatches = template.match(/\[TDP\][^\n、）,，]+/g);
