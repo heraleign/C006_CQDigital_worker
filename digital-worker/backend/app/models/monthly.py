@@ -229,3 +229,71 @@ class MaMlModelConfig(Base):
     created_by = Column(String(100))
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class MaConfigStage(Base):
+    """月账作业阶段配置"""
+    __tablename__ = "ma_config_stage"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stage_code = Column(String(50), unique=True, nullable=False, comment="阶段编码")
+    name = Column(String(200), nullable=False, comment="阶段名称")
+    sort_order = Column(Integer, default=0, comment="排序")
+    status = Column(String(20), default="pending", comment="状态: completed/pending/running")
+    completed_at = Column(DateTime, comment="完成时间")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class MaConfigMilestone(Base):
+    """月账里程碑配置"""
+    __tablename__ = "ma_config_milestone"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stage_id = Column(Integer, ForeignKey("ma_config_stage.id"), nullable=False, comment="所属阶段ID")
+    milestone_code = Column(String(50), unique=True, nullable=False, comment="里程碑编码")
+    name = Column(String(200), nullable=False, comment="里程碑名称")
+    sort_order = Column(Integer, default=0, comment="排序")
+    status = Column(String(20), default="pending", comment="状态: completed/pending/running")
+    progress_pct = Column(Float, default=0, comment="完成百分比")
+    completed_at = Column(DateTime, comment="完成时间")
+    stage = relationship("MaConfigStage", backref="milestones")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class MaConfigWorkPlan(Base):
+    """月账作业计划配置"""
+    __tablename__ = "ma_config_work_plan"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    milestone_id = Column(Integer, ForeignKey("ma_config_milestone.id"), nullable=False, comment="所属里程碑ID")
+    plan_code = Column(String(50), unique=True, nullable=False, comment="计划编码")
+    seq_no = Column(Integer, default=0, comment="序号")
+    name = Column(String(200), nullable=False, comment="计划名称")
+    time_point = Column(String(50), comment="时间点")
+    task_mode = Column(String(50), default="人工", comment="执行方式: 人工/数字员工")
+    is_system_task = Column(Boolean, default=False, comment="是否系统任务")
+    status = Column(String(20), default="pending", comment="状态: completed/pending/running")
+    completed_at = Column(DateTime, comment="完成时间")
+    milestone = relationship("MaConfigMilestone", backref="work_plans")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
+class MaConfigTask(Base):
+    """月账任务配置"""
+    __tablename__ = "ma_config_task"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    plan_id = Column(Integer, ForeignKey("ma_config_work_plan.id"), nullable=False, comment="所属计划ID")
+    task_code = Column(String(50), unique=True, nullable=False, comment="任务编码")
+    task_type = Column(String(50), default="MANUAL_OP", comment="任务类型: TDP_TASK/PUBLISH_MSG/MANUAL_OP/SQL_SCRIPT")
+    content = Column(Text, nullable=False, comment="任务内容")
+    sort_order = Column(Integer, default=0, comment="排序")
+    status = Column(String(20), default="pending", comment="状态: completed/pending/running/paused/manual_skipped")
+    start_time = Column(DateTime, comment="开始时间")
+    end_time = Column(DateTime, comment="结束时间")
+    work_plan = relationship("MaConfigWorkPlan", backref="tasks")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)

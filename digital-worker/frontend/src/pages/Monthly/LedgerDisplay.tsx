@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Progress, Table, Tag, Row, Col, Statistic,
-  Typography, Badge, Empty, Spin, Space,
+  Typography, Badge, Empty, Spin, Space, Select,
+  Button, Dropdown, message,
 } from 'antd';
 import {
   CheckCircleOutlined, ClockCircleOutlined, FlagOutlined,
-  FileTextOutlined, BranchesOutlined, AppstoreOutlined,
+  FileTextOutlined, BranchesOutlined, BarChartOutlined,
   UnorderedListOutlined, ScheduleOutlined, UserOutlined,
   RobotOutlined, DatabaseOutlined, MessageOutlined,
+  PauseCircleOutlined, CheckSquareOutlined, MoreOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { monthlyApi } from '@/services/monthly';
 
 const { Title, Text } = Typography;
@@ -19,7 +22,9 @@ interface LedgerTask {
   task_type: 'TDP_TASK' | 'PUBLISH_MSG' | 'MANUAL_OP' | 'SQL_SCRIPT';
   content: string;
   sort_order: number;
-  status: 'completed' | 'pending' | 'running';
+  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
+  start_time?: string;
+  end_time?: string;
 }
 
 interface LedgerWorkPlan {
@@ -29,7 +34,7 @@ interface LedgerWorkPlan {
   time_point: string;
   task_mode: string;
   is_system_task: boolean;
-  status: 'completed' | 'pending' | 'running';
+  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
   tasks: LedgerTask[];
 }
 
@@ -37,7 +42,7 @@ interface LedgerMilestone {
   milestone_id: string;
   name: string;
   sort_order: number;
-  status: 'completed' | 'pending' | 'running';
+  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
   progress_pct: number;
   work_plans: LedgerWorkPlan[];
 }
@@ -46,7 +51,7 @@ interface LedgerStage {
   stage_id: string;
   name: string;
   sort_order: number;
-  status: 'completed' | 'pending' | 'running';
+  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
   progress_pct: number;
   milestone_count: number;
   completed_milestone_count: number;
@@ -79,6 +84,8 @@ const STATUS_CONFIG: Record<string, { color: string; text: string; icon: React.R
   completed: { color: '#52c41a', text: '已完成', icon: <CheckCircleOutlined /> },
   running: { color: '#1890ff', text: '进行中', icon: <ClockCircleOutlined /> },
   pending: { color: '#d9d9d9', text: '未开始', icon: <ClockCircleOutlined /> },
+  paused: { color: '#ff4d4f', text: '已暂停', icon: <PauseCircleOutlined /> },
+  manual_skipped: { color: '#fa8c16', text: '手工放过', icon: <CheckSquareOutlined /> },
 };
 
 const STAGE_COLORS = ['#1677ff', '#52c41a', '#faad14', '#fa8c16', '#eb2f96'];
@@ -227,7 +234,8 @@ const WorkPlanTable: React.FC<{
   workPlans: LedgerWorkPlan[];
   onPlanClick: (plan: LedgerWorkPlan) => void;
   activePlanId: string | null;
-}> = ({ workPlans, onPlanClick, activePlanId }) => {
+  onRefresh?: () => void;
+}> = ({ workPlans, onPlanClick, activePlanId, onRefresh }) => {
   return (
     <Table
       dataSource={workPlans}
@@ -236,7 +244,7 @@ const WorkPlanTable: React.FC<{
       pagination={false}
       expandable={{
         expandedRowRender: (record: LedgerWorkPlan) => (
-          <TaskListTable tasks={record.tasks} />
+          <TaskListTable tasks={record.tasks} onRefresh={onRefresh} />
         ),
         rowExpandable: (record: LedgerWorkPlan) => record.tasks.length > 0,
         expandedRowKeys: activePlanId ? [activePlanId] : [],
@@ -301,7 +309,38 @@ const WorkPlanTable: React.FC<{
 };
 
 /** Task list table */
-const TaskListTable: React.FC<{ tasks: LedgerTask[] }> = ({ tasks }) => {
+const TaskListTable: React.FC<{ tasks: LedgerTask[]; onRefresh?: () => void }> = ({ tasks, onRefresh }) => {
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const handleUpdateStatus = async (taskId: string, status: string) => {
+    setUpdatingId(taskId);
+    try {
+      await monthlyApi.updateConfigTask(taskId, { status });
+      message.success('状态更新成功');
+      onRefresh?.();
+    } catch {
+      message.error('状态更新失败');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const getActionItems = (record: LedgerTask) => {
+    const items = [
+      { key: 'completed', label: '标记完成' },
+      { key: 'pending', label: '标记为未完成' },
+      { key: 'running', label: '进行中' },
+      { key: 'paused', label: '暂停' },
+      { key: 'manual_skipped', label: '手工放过' },
+    ].filter((item) => item.key !== record.status);
+    return items.map((item) => ({
+      key: item.key,
+      label: item.label,
+      onClick: () => handleUpdateStatus(record.task_id, item.key),
+      disabled: updatingId === record.task_id,
+    }));
+  };
+
   if (tasks.length === 0) {
     return (
       <div style={{ padding: 16, textAlign: 'center' }}>
@@ -343,28 +382,92 @@ const TaskListTable: React.FC<{ tasks: LedgerTask[] }> = ({ tasks }) => {
           ),
         },
         {
+          title: '开始时间',
+          dataIndex: 'start_time',
+          width: 150,
+          align: 'center',
+          render: (v?: string) => (v ? dayjs(v).format('MM-DD HH:mm') : <Text type="secondary">-</Text>),
+        },
+        {
+          title: '结束时间',
+          dataIndex: 'end_time',
+          width: 150,
+          align: 'center',
+          render: (v?: string) => (v ? dayjs(v).format('MM-DD HH:mm') : <Text type="secondary">-</Text>),
+        },
+        {
           title: '状态',
           dataIndex: 'status',
           width: 90,
           render: (status: string) => <StatusBadge status={status} />,
+        },
+        {
+          title: '操作',
+          width: 120,
+          align: 'center',
+          render: (_: unknown, record: LedgerTask) => {
+            if (record.task_type === 'TDP_TASK') {
+              return <Text type="secondary">-</Text>;
+            }
+            const items = getActionItems(record);
+            if (items.length === 0) {
+              return <Text type="secondary">-</Text>;
+            }
+            return (
+              <Dropdown menu={{ items }} placement="bottomLeft">
+                <Button size="small" icon={<MoreOutlined />} loading={updatingId === record.task_id}>
+                  操作
+                </Button>
+              </Dropdown>
+            );
+          },
         },
       ]}
     />
   );
 };
 
+// ===== Helpers =====
+const generateAcctMonths = (): string[] => {
+  const start = '202512';
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const end = `${currentYear}${String(currentMonth).padStart(2, '0')}`;
+
+  const months: string[] = [];
+  let year = parseInt(start.slice(0, 4), 10);
+  let month = parseInt(start.slice(4, 6), 10);
+
+  while (true) {
+    const ym = `${year}${String(month).padStart(2, '0')}`;
+    months.push(ym);
+    if (ym === end) break;
+    month++;
+    if (month > 12) {
+      month = 1;
+      year++;
+    }
+  }
+
+  return months.reverse();
+};
+
 // ===== Main Page =====
+const acctMonthOptions = generateAcctMonths().map((m) => ({ value: m, label: m }));
+
 const LedgerDisplay: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<LedgerOverview | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [activeMilestoneId, setActiveMilestoneId] = useState<string | null>(null);
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>(acctMonthOptions[0]?.value || '');
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (month?: string) => {
     setLoading(true);
     try {
-      const res = await monthlyApi.getLedgerOverview();
+      const res = await monthlyApi.getLedgerOverview(month ? { acct_month: month } : undefined);
       const data: LedgerOverview = res?.data || res;
       setOverview(data);
       if (data.stages.length > 0 && !activeStageId) {
@@ -380,7 +483,7 @@ const LedgerDisplay: React.FC = () => {
   }, [activeStageId]);
 
   useEffect(() => {
-    fetchData();
+    fetchData(selectedMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -423,11 +526,20 @@ const LedgerDisplay: React.FC = () => {
       <Card style={{ marginBottom: 16 }}>
         <Row align="middle" justify="space-between" style={{ marginBottom: 16 }}>
           <Col>
-            <Space>
-              <AppstoreOutlined style={{ fontSize: 22, color: '#1677ff' }} />
+            <Space align="center">
+              <BarChartOutlined style={{ fontSize: 22, color: '#1677ff' }} />
               <Title level={4} style={{ margin: 0 }}>
-                月账作业展示 — {overview.acct_month}
+                月账进度 — {overview.acct_month}
               </Title>
+              <Select
+                value={selectedMonth}
+                onChange={(val) => {
+                  setSelectedMonth(val);
+                  fetchData(val);
+                }}
+                style={{ width: 120 }}
+                options={acctMonthOptions}
+              />
             </Space>
           </Col>
           <Col>
@@ -547,6 +659,7 @@ const LedgerDisplay: React.FC = () => {
                         workPlans={ms.work_plans}
                         onPlanClick={handlePlanClick}
                         activePlanId={activePlanId}
+                        onRefresh={() => fetchData(selectedMonth)}
                       />
                     )}
                   </div>

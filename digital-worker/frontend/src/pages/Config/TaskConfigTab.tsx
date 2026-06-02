@@ -51,7 +51,7 @@ const TaskConfigTab: React.FC = () => {
 
   const fetchMilestones = useCallback(async (stageId?: string) => {
     try {
-      const res = await monthlyApi.getMilestones({ stage_id: stageId });
+      const res = await monthlyApi.getConfigMilestones({ stage_id: stageId });
       const items = res?.data?.items || res?.items || res?.data || res || [];
       setMilestones(items);
     } catch { /* ignore */ }
@@ -59,7 +59,7 @@ const TaskConfigTab: React.FC = () => {
 
   const fetchPlans = useCallback(async (milestoneId?: string) => {
     try {
-      const res = await monthlyApi.getWorkPlans({ milestone_id: milestoneId });
+      const res = await monthlyApi.getConfigWorkPlans({ milestone_id: milestoneId });
       const items = res?.data?.items || res?.items || res?.data || res || [];
       setPlans(items.map((i: any) => ({ plan_id: i.plan_id, name: i.name, milestone_id: i.milestone_id })));
     } catch { /* ignore */ }
@@ -68,7 +68,7 @@ const TaskConfigTab: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await monthlyApi.getTasks({
+      const res = await monthlyApi.getConfigTasks({
         stage_id: filterStageId,
         milestone_id: filterMilestoneId,
         plan_id: filterPlanId,
@@ -100,7 +100,7 @@ const TaskConfigTab: React.FC = () => {
 
   const handleDelete = async (record: TaskItem) => {
     try {
-      await monthlyApi.deleteTask(record.task_id);
+      await monthlyApi.deleteConfigTask(record.task_id);
       message.success('删除成功');
       fetchData();
     } catch {
@@ -112,9 +112,9 @@ const TaskConfigTab: React.FC = () => {
     const values = await form.validateFields();
     try {
       if (editing) {
-        await monthlyApi.updateTask(editing.task_id, values);
+        await monthlyApi.updateConfigTask(editing.task_id, values);
       } else {
-        await monthlyApi.createTask(values);
+        await monthlyApi.createConfigTask(values);
       }
       message.success(editing ? '修改成功' : '新增成功');
       setModalOpen(false);

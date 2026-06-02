@@ -31,12 +31,8 @@ const Analysis = React.lazy(() => import('@/pages/RootCause/Analysis'));
 const CaseLibrary = React.lazy(() => import('@/pages/RootCause/CaseLibrary'));
 const Suggestions = React.lazy(() => import('@/pages/RootCause/Suggestions'));
 const TaskList = React.lazy(() => import('@/pages/RootCause/TaskList'));
-const Monitor = React.lazy(() => import('@/pages/Monthly/Monitor'));
-const TaskOrchestration = React.lazy(() => import('@/pages/Monthly/TaskOrchestration'));
 const DailyReport = React.lazy(() => import('@/pages/Monthly/DailyReport'));
 const ReportPublish = React.lazy(() => import('@/pages/Monthly/ReportPublish'));
-const BillingProgress = React.lazy(() => import('@/pages/Monthly/BillingProgress'));
-const BillingTaskConfig = React.lazy(() => import('@/pages/Monthly/BillingTaskConfig'));
 const LedgerDisplay = React.lazy(() => import('@/pages/Monthly/LedgerDisplay'));
 const Tools = React.lazy(() => import('@/pages/Settings/Tools'));
 const Prompts = React.lazy(() => import('@/pages/Settings/Prompts'));
@@ -75,12 +71,8 @@ const routeConfig = [
       {
         path: 'monthly',
         children: [
-          { path: 'monitor', element: <SuspenseWrapper><Monitor /></SuspenseWrapper> },
-          { path: 'task-orchestration', element: <SuspenseWrapper><TaskOrchestration /></SuspenseWrapper> },
           { path: 'daily-report', element: <SuspenseWrapper><DailyReport /></SuspenseWrapper> },
           { path: 'report-publish', element: <SuspenseWrapper><ReportPublish /></SuspenseWrapper> },
-          { path: 'billing-progress', element: <SuspenseWrapper><BillingProgress /></SuspenseWrapper> },
-          { path: 'billing-task-config', element: <SuspenseWrapper><BillingTaskConfig /></SuspenseWrapper> },
           { path: 'ledger-display', element: <SuspenseWrapper><LedgerDisplay /></SuspenseWrapper> },
           { path: 'config', element: <SuspenseWrapper><ConfigPage /></SuspenseWrapper> },
         ],

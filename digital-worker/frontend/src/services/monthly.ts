@@ -32,7 +32,7 @@ export const monthlyApi = {
   scheduleReport: (data: any) => api.post('/monthly/reports/schedule', data),
 
   // Ledger Display (四级层次展示)
-  getLedgerOverview: () => api.get('/monthly/ledger/overview'),
+  getLedgerOverview: (params?: { acct_month?: string }) => api.get('/monthly/ledger/overview', { params }),
 
   // Config - Stages
   getStages: (params?: any) => api.get('/config/stages', { params }),
@@ -41,22 +41,22 @@ export const monthlyApi = {
   deleteStage: (id: string) => api.delete(`/config/stages/${id}`),
 
   // Config - Milestones
-  getMilestones: (params?: any) => api.get('/config/milestones', { params }),
-  createMilestone: (data: any) => api.post('/config/milestones', data),
-  updateMilestone: (id: string, data: any) => api.put(`/config/milestones/${id}`, data),
-  deleteMilestone: (id: string) => api.delete(`/config/milestones/${id}`),
+  getConfigMilestones: (params?: any) => api.get('/config/milestones', { params }),
+  createConfigMilestone: (data: any) => api.post('/config/milestones', data),
+  updateConfigMilestone: (id: string, data: any) => api.put(`/config/milestones/${id}`, data),
+  deleteConfigMilestone: (id: string) => api.delete(`/config/milestones/${id}`),
 
   // Config - Work Plans
-  getWorkPlans: (params?: any) => api.get('/config/work-plans', { params }),
-  createWorkPlan: (data: any) => api.post('/config/work-plans', data),
-  updateWorkPlan: (id: string, data: any) => api.put(`/config/work-plans/${id}`, data),
-  deleteWorkPlan: (id: string) => api.delete(`/config/work-plans/${id}`),
+  getConfigWorkPlans: (params?: any) => api.get('/config/work-plans', { params }),
+  createConfigWorkPlan: (data: any) => api.post('/config/work-plans', data),
+  updateConfigWorkPlan: (id: string, data: any) => api.put(`/config/work-plans/${id}`, data),
+  deleteConfigWorkPlan: (id: string) => api.delete(`/config/work-plans/${id}`),
 
   // Config - Tasks
-  getTasks: (params?: any) => api.get('/config/tasks', { params }),
-  createTask: (data: any) => api.post('/config/tasks', data),
-  updateTask: (id: string, data: any) => api.put(`/config/tasks/${id}`, data),
-  deleteTask: (id: string) => api.delete(`/config/tasks/${id}`),
+  getConfigTasks: (params?: any) => api.get('/config/tasks', { params }),
+  createConfigTask: (data: any) => api.post('/config/tasks', data),
+  updateConfigTask: (id: string, data: any) => api.put(`/config/tasks/${id}`, data),
+  deleteConfigTask: (id: string) => api.delete(`/config/tasks/${id}`),
 
   // Template parse
   parseTemplate: (data: { template: string }) => api.post('/config/parse-template', data),

@@ -38,7 +38,7 @@ const MilestoneConfigTab: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await monthlyApi.getMilestones({ stage_id: filterStageId });
+      const res = await monthlyApi.getConfigMilestones({ stage_id: filterStageId });
       setData(res?.data?.items || res?.items || res?.data || res || []);
     } catch {
       message.error('获取里程碑数据失败');
@@ -69,7 +69,7 @@ const MilestoneConfigTab: React.FC = () => {
 
   const handleDelete = async (record: Milestone) => {
     try {
-      await monthlyApi.deleteMilestone(record.milestone_id);
+      await monthlyApi.deleteConfigMilestone(record.milestone_id);
       message.success('删除成功');
       fetchData();
     } catch {
@@ -81,9 +81,9 @@ const MilestoneConfigTab: React.FC = () => {
     const values = await form.validateFields();
     try {
       if (editing) {
-        await monthlyApi.updateMilestone(editing.milestone_id, values);
+        await monthlyApi.updateConfigMilestone(editing.milestone_id, values);
       } else {
-        await monthlyApi.createMilestone(values);
+        await monthlyApi.createConfigMilestone(values);
       }
       message.success(editing ? '修改成功' : '新增成功');
       setModalOpen(false);

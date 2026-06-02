@@ -50,7 +50,7 @@ const WorkPlanConfigTab: React.FC = () => {
 
   const fetchMilestones = useCallback(async (stageId?: string) => {
     try {
-      const res = await monthlyApi.getMilestones({ stage_id: stageId });
+      const res = await monthlyApi.getConfigMilestones({ stage_id: stageId });
       const items = res?.data?.items || res?.items || res?.data || res || [];
       setMilestones(items);
     } catch { /* ignore */ }
@@ -59,7 +59,7 @@ const WorkPlanConfigTab: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await monthlyApi.getWorkPlans({
+      const res = await monthlyApi.getConfigWorkPlans({
         stage_id: filterStageId,
         milestone_id: filterMilestoneId,
       });
@@ -91,7 +91,7 @@ const WorkPlanConfigTab: React.FC = () => {
 
   const handleDelete = async (record: WorkPlan) => {
     try {
-      await monthlyApi.deleteWorkPlan(record.plan_id);
+      await monthlyApi.deleteConfigWorkPlan(record.plan_id);
       message.success('删除成功');
       fetchData();
     } catch {
@@ -122,9 +122,9 @@ const WorkPlanConfigTab: React.FC = () => {
     const values = await form.validateFields();
     try {
       if (editing) {
-        await monthlyApi.updateWorkPlan(editing.plan_id, { ...values, auto_generate: autoGenerate });
+        await monthlyApi.updateConfigWorkPlan(editing.plan_id, { ...values, auto_generate: autoGenerate });
       } else {
-        await monthlyApi.createWorkPlan({ ...values, auto_generate: autoGenerate });
+        await monthlyApi.createConfigWorkPlan({ ...values, auto_generate: autoGenerate });
       }
       message.success(editing ? '修改成功' : '新增成功');
       setModalOpen(false);

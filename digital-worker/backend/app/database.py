@@ -51,6 +51,11 @@ def get_sync_engine():
         return None
 
 
+def get_session_factory():
+    """Get the async session factory."""
+    return _get_session_factory()
+
+
 async def get_db():
     """Get database session dependency."""
     factory = _get_session_factory()

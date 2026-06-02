@@ -1,18 +1,27 @@
 """Monthly module API endpoints - 12+ endpoints."""
-from fastapi import APIRouter, Query, Path, HTTPException
+from fastapi import APIRouter, Query, Path, HTTPException, Depends
 from typing import Optional
 from datetime import date
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
 from app.utils.response import success_response, paginated_response
 from app.services.monthly_service import MonthlyService
+from app.services.ledger_service import LedgerService
 from app.schemas.monthly import (
     OrchestrationTaskCreate, OrchestrationTaskUpdate,
     DailyReportGenerateRequest, DailyReportUpdateRequest,
     BillingTaskCreate, BillingTaskUpdate, BillingTaskStatusUpdate,
     BriefGenerateRequest, ImportBillingTasksRequest,
+    ConfigStageCreate, ConfigStageUpdate,
+    ConfigMilestoneCreate, ConfigMilestoneUpdate,
+    ConfigWorkPlanCreate, ConfigWorkPlanUpdate,
+    ConfigTaskCreate, ConfigTaskUpdate,
 )
 
 router = APIRouter()
 service = MonthlyService()
+ledger_service = LedgerService()
 
 
 # ==================== Progress & Dashboard Endpoints ====================
@@ -311,3 +320,271 @@ async def import_billing_progress_tasks(request: ImportBillingTasksRequest):
         request.cycle_id, [t.model_dump() for t in request.tasks]
     )
     return success_response(data=data, message=f"成功导入 {data['imported_count']} 条任务")
+
+
+# ==================== Ledger Overview Endpoints ====================
+
+@router.get("/ledger/overview")
+async def get_ledger_overview(
+    acct_month: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full 4-level ledger hierarchy."""
+    data = await ledger_service.get_ledger_overview(db, acct_month)
+    return success_response(data=data)
+
+
+# ==================== Config - Stage Endpoints ====================
+
+@router.get("/config/stages")
+async def list_config_stages(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """List config stages."""
+    data = await ledger_service.list_stages(db, page, page_size)
+    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+
+
+@router.post("/config/stages")
+async def create_config_stage(stage: ConfigStageCreate, db: AsyncSession = Depends(get_db)):
+    """Create config stage."""
+    data = await ledger_service.create_stage(db, stage.model_dump(exclude_unset=True))
+    return success_response(data=data, message="阶段创建成功")
+
+
+@router.get("/config/stages/{stage_id}")
+async def get_config_stage(stage_id: int = Path(..., ge=1), db: AsyncSession = Depends(get_db)):
+    """Get config stage by ID."""
+    data = await ledger_service.get_stage(db, stage_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="阶段不存在")
+    return success_response(data=data)
+
+
+@router.put("/config/stages/{stage_id}")
+async def update_config_stage(
+    stage_id: int,
+    stage: ConfigStageUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update config stage."""
+    data = await ledger_service.update_stage(db, stage_id, stage.model_dump(exclude_unset=True))
+    if not data:
+        raise HTTPException(status_code=404, detail="阶段不存在")
+    return success_response(data=data, message="阶段更新成功")
+
+
+@router.delete("/config/stages/{stage_id}")
+async def delete_config_stage(stage_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete config stage."""
+    data = await ledger_service.delete_stage(db, stage_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="阶段不存在")
+    return success_response(data=data, message="阶段删除成功")
+
+
+# ==================== Config - Milestone Endpoints ====================
+
+@router.get("/config/milestones")
+async def list_config_milestones(
+    stage_id: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """List config milestones."""
+    data = await ledger_service.list_milestones(db, stage_id, page, page_size)
+    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+
+
+@router.post("/config/milestones")
+async def create_config_milestone(
+    milestone: ConfigMilestoneCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create config milestone."""
+    data = await ledger_service.create_milestone(db, milestone.model_dump(exclude_unset=True))
+    return success_response(data=data, message="里程碑创建成功")
+
+
+@router.get("/config/milestones/{milestone_id}")
+async def get_config_milestone(
+    milestone_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get config milestone by ID."""
+    data = await ledger_service.get_milestone(db, milestone_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="里程碑不存在")
+    return success_response(data=data)
+
+
+@router.put("/config/milestones/{milestone_id}")
+async def update_config_milestone(
+    milestone_id: int,
+    milestone: ConfigMilestoneUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update config milestone."""
+    data = await ledger_service.update_milestone(
+        db, milestone_id, milestone.model_dump(exclude_unset=True)
+    )
+    if not data:
+        raise HTTPException(status_code=404, detail="里程碑不存在")
+    return success_response(data=data, message="里程碑更新成功")
+
+
+@router.delete("/config/milestones/{milestone_id}")
+async def delete_config_milestone(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete config milestone."""
+    data = await ledger_service.delete_milestone(db, milestone_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="里程碑不存在")
+    return success_response(data=data, message="里程碑删除成功")
+
+
+# ==================== Config - Work Plan Endpoints ====================
+
+@router.get("/config/work-plans")
+async def list_config_work_plans(
+    milestone_id: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """List config work plans."""
+    data = await ledger_service.list_work_plans(db, milestone_id, page, page_size)
+    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+
+
+@router.post("/config/work-plans")
+async def create_config_work_plan(
+    plan: ConfigWorkPlanCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create config work plan."""
+    data = await ledger_service.create_work_plan(db, plan.model_dump(exclude_unset=True))
+    return success_response(data=data, message="作业计划创建成功")
+
+
+@router.get("/config/work-plans/{plan_id}")
+async def get_config_work_plan(
+    plan_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get config work plan by ID."""
+    data = await ledger_service.get_work_plan(db, plan_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="作业计划不存在")
+    return success_response(data=data)
+
+
+@router.put("/config/work-plans/{plan_id}")
+async def update_config_work_plan(
+    plan_id: int,
+    plan: ConfigWorkPlanUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update config work plan."""
+    data = await ledger_service.update_work_plan(
+        db, plan_id, plan.model_dump(exclude_unset=True)
+    )
+    if not data:
+        raise HTTPException(status_code=404, detail="作业计划不存在")
+    return success_response(data=data, message="作业计划更新成功")
+
+
+@router.delete("/config/work-plans/{plan_id}")
+async def delete_config_work_plan(plan_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete config work plan."""
+    data = await ledger_service.delete_work_plan(db, plan_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="作业计划不存在")
+    return success_response(data=data, message="作业计划删除成功")
+
+
+# ==================== Config - Task Endpoints ====================
+
+@router.get("/config/tasks")
+async def list_config_tasks(
+    plan_id: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """List config tasks."""
+    data = await ledger_service.list_tasks(db, plan_id, page, page_size)
+    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+
+
+@router.post("/config/tasks")
+async def create_config_task(task: ConfigTaskCreate, db: AsyncSession = Depends(get_db)):
+    """Create config task."""
+    data = await ledger_service.create_task(db, task.model_dump(exclude_unset=True))
+    return success_response(data=data, message="任务创建成功")
+
+
+@router.get("/config/tasks/{task_id}")
+async def get_config_task(
+    task_id: int = Path(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get config task by ID."""
+    data = await ledger_service.get_task(db, task_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return success_response(data=data)
+
+
+@router.put("/config/tasks/{task_id}")
+async def update_config_task(
+    task_id: int,
+    task: ConfigTaskUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update config task."""
+    data = await ledger_service.update_task(db, task_id, task.model_dump(exclude_unset=True))
+    if not data:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return success_response(data=data, message="任务更新成功")
+
+
+@router.delete("/config/tasks/{task_id}")
+async def delete_config_task(task_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete config task."""
+    data = await ledger_service.delete_task(db, task_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return success_response(data=data, message="任务删除成功")
+
+
+# ==================== Config - Template Parse ====================
+
+@router.post("/config/parse-template")
+async def parse_template(data: dict):
+    """Parse template string into task list."""
+    template = data.get("template", "")
+    tasks = []
+    if template:
+        lines = [line.strip() for line in template.split("\n") if line.strip()]
+        for idx, line in enumerate(lines):
+            task_type = "MANUAL_OP"
+            if line.startswith("[TDP]"):
+                task_type = "TDP_TASK"
+            elif line.startswith("SQL:") or line.startswith("SELECT") or line.startswith("select"):
+                task_type = "SQL_SCRIPT"
+            elif "通知" in line or "发布" in line or "消息" in line:
+                task_type = "PUBLISH_MSG"
+            tasks.append({
+                "task_code": f"TK_AUTO_{idx + 1}",
+                "task_type": task_type,
+                "content": line,
+                "sort_order": idx + 1,
+                "status": "pending",
+            })
+    return success_response(data=tasks, message="模板解析成功")

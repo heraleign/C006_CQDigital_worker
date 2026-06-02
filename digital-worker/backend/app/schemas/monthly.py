@@ -266,3 +266,194 @@ class BillingTaskUpdate(BaseModel):
 class ImportBillingTasksRequest(BaseModel):
     cycle_id: str = "202605"
     tasks: list[BillingTaskCreate] = []
+
+
+# ==================== Ledger Config Schemas ====================
+
+class ConfigStageCreate(BaseModel):
+    stage_code: str
+    name: str
+    sort_order: int = 0
+    status: str = "pending"
+
+
+class ConfigStageUpdate(BaseModel):
+    stage_code: Optional[str] = None
+    name: Optional[str] = None
+    sort_order: Optional[int] = None
+    status: Optional[str] = None
+
+
+class ConfigStageResponse(BaseModel):
+    id: int
+    stage_code: str
+    name: str
+    sort_order: int
+    status: str
+    completed_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ConfigMilestoneCreate(BaseModel):
+    stage_id: int
+    milestone_code: str
+    name: str
+    sort_order: int = 0
+    status: str = "pending"
+    progress_pct: float = 0
+
+
+class ConfigMilestoneUpdate(BaseModel):
+    stage_id: Optional[int] = None
+    milestone_code: Optional[str] = None
+    name: Optional[str] = None
+    sort_order: Optional[int] = None
+    status: Optional[str] = None
+    progress_pct: Optional[float] = None
+
+
+class ConfigMilestoneResponse(BaseModel):
+    id: int
+    stage_id: int
+    milestone_code: str
+    name: str
+    sort_order: int
+    status: str
+    progress_pct: float
+    completed_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ConfigWorkPlanCreate(BaseModel):
+    milestone_id: int
+    plan_code: str
+    seq_no: int = 0
+    name: str
+    time_point: Optional[str] = None
+    task_mode: str = "人工"
+    is_system_task: bool = False
+    status: str = "pending"
+
+
+class ConfigWorkPlanUpdate(BaseModel):
+    milestone_id: Optional[int] = None
+    plan_code: Optional[str] = None
+    seq_no: Optional[int] = None
+    name: Optional[str] = None
+    time_point: Optional[str] = None
+    task_mode: Optional[str] = None
+    is_system_task: Optional[bool] = None
+    status: Optional[str] = None
+
+
+class ConfigWorkPlanResponse(BaseModel):
+    id: int
+    milestone_id: int
+    plan_code: str
+    seq_no: int
+    name: str
+    time_point: Optional[str] = None
+    task_mode: str
+    is_system_task: bool
+    status: str
+    completed_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class ConfigTaskCreate(BaseModel):
+    plan_id: int
+    task_code: str
+    task_type: str = "MANUAL_OP"
+    content: str
+    sort_order: int = 0
+    status: str = "pending"
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+
+class ConfigTaskUpdate(BaseModel):
+    plan_id: Optional[int] = None
+    task_code: Optional[str] = None
+    task_type: Optional[str] = None
+    content: Optional[str] = None
+    sort_order: Optional[int] = None
+    status: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+
+class ConfigTaskResponse(BaseModel):
+    id: int
+    plan_id: int
+    task_code: str
+    task_type: str
+    content: str
+    sort_order: int
+    status: str
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+# ==================== Ledger Overview Schemas ====================
+
+class LedgerTaskResponse(BaseModel):
+    task_id: str
+    task_type: str
+    content: str
+    sort_order: int
+    status: str
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+
+
+class LedgerWorkPlanResponse(BaseModel):
+    plan_id: str
+    seq_no: int
+    name: str
+    time_point: Optional[str] = None
+    task_mode: str
+    is_system_task: bool
+    status: str
+    completed_at: Optional[str] = None
+    tasks: list[LedgerTaskResponse] = []
+
+
+class LedgerMilestoneResponse(BaseModel):
+    milestone_id: str
+    name: str
+    sort_order: int
+    status: str
+    progress_pct: float
+    completed_at: Optional[str] = None
+    work_plans: list[LedgerWorkPlanResponse] = []
+
+
+class LedgerStageResponse(BaseModel):
+    stage_id: str
+    name: str
+    sort_order: int
+    status: str
+    progress_pct: float
+    completed_at: Optional[str] = None
+    milestone_count: int
+    completed_milestone_count: int
+    milestones: list[LedgerMilestoneResponse] = []
+
+
+class LedgerOverviewResponse(BaseModel):
+    acct_month: str
+    total_stages: int
+    completed_stages: int
+    total_milestones: int
+    completed_milestones: int
+    total_work_plans: int
+    completed_work_plans: int
+    total_tasks: int
+    completed_tasks: int
+    overall_progress_pct: float
+    stages: list[LedgerStageResponse] = []
