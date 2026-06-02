@@ -1,0 +1,595 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Card, Progress, Table, Tag, Row, Col, Statistic,
+  Typography, Badge, Empty, Spin, Space,
+} from 'antd';
+import {
+  CheckCircleOutlined, ClockCircleOutlined, FlagOutlined,
+  FileTextOutlined, BranchesOutlined, AppstoreOutlined,
+  UnorderedListOutlined, ScheduleOutlined, UserOutlined,
+  RobotOutlined, DatabaseOutlined, MessageOutlined,
+} from '@ant-design/icons';
+import { monthlyApi } from '@/services/monthly';
+
+const { Title, Text } = Typography;
+
+// ===== Types =====
+interface LedgerTask {
+  task_id: string;
+  task_type: 'TDP_TASK' | 'PUBLISH_MSG' | 'MANUAL_OP' | 'SQL_SCRIPT';
+  content: string;
+  sort_order: number;
+  status: 'completed' | 'pending' | 'running';
+}
+
+interface LedgerWorkPlan {
+  plan_id: string;
+  seq_no: number;
+  name: string;
+  time_point: string;
+  task_mode: string;
+  is_system_task: boolean;
+  status: 'completed' | 'pending' | 'running';
+  tasks: LedgerTask[];
+}
+
+interface LedgerMilestone {
+  milestone_id: string;
+  name: string;
+  sort_order: number;
+  status: 'completed' | 'pending' | 'running';
+  progress_pct: number;
+  work_plans: LedgerWorkPlan[];
+}
+
+interface LedgerStage {
+  stage_id: string;
+  name: string;
+  sort_order: number;
+  status: 'completed' | 'pending' | 'running';
+  progress_pct: number;
+  milestone_count: number;
+  completed_milestone_count: number;
+  milestones: LedgerMilestone[];
+}
+
+interface LedgerOverview {
+  acct_month: string;
+  total_stages: number;
+  completed_stages: number;
+  total_milestones: number;
+  completed_milestones: number;
+  total_work_plans: number;
+  completed_work_plans: number;
+  total_tasks: number;
+  completed_tasks: number;
+  overall_progress_pct: number;
+  stages: LedgerStage[];
+}
+
+// ===== Constants =====
+const TASK_TYPE_CONFIG: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
+  TDP_TASK: { color: 'blue', label: 'TDP任务', icon: <DatabaseOutlined /> },
+  PUBLISH_MSG: { color: 'green', label: '发布消息', icon: <MessageOutlined /> },
+  MANUAL_OP: { color: 'orange', label: '人工操作', icon: <UserOutlined /> },
+  SQL_SCRIPT: { color: 'purple', label: 'SQL脚本', icon: <FileTextOutlined /> },
+};
+
+const STATUS_CONFIG: Record<string, { color: string; text: string; icon: React.ReactNode }> = {
+  completed: { color: '#52c41a', text: '已完成', icon: <CheckCircleOutlined /> },
+  running: { color: '#1890ff', text: '进行中', icon: <ClockCircleOutlined /> },
+  pending: { color: '#d9d9d9', text: '未开始', icon: <ClockCircleOutlined /> },
+};
+
+const STAGE_COLORS = ['#1677ff', '#52c41a', '#faad14', '#fa8c16', '#eb2f96'];
+
+// ===== Components =====
+
+/** Status badge for any item */
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  return (
+    <Tag color={cfg.color} icon={cfg.icon}>
+      {cfg.text}
+    </Tag>
+  );
+};
+
+/** Task type tag */
+const TaskTypeTag: React.FC<{ type: string }> = ({ type }) => {
+  const cfg = TASK_TYPE_CONFIG[type] || TASK_TYPE_CONFIG.MANUAL_OP;
+  return (
+    <Tag color={cfg.color} icon={cfg.icon}>
+      {cfg.label}
+    </Tag>
+  );
+};
+
+/** Stage progress card (top row) */
+const StageCard: React.FC<{
+  stage: LedgerStage;
+  index: number;
+  isActive: boolean;
+  onClick: () => void;
+}> = ({ stage, index, isActive, onClick }) => {
+  const color = STAGE_COLORS[index % STAGE_COLORS.length];
+  return (
+    <Card
+      size="small"
+      style={{
+        cursor: 'pointer',
+        borderColor: isActive ? color : undefined,
+        boxShadow: isActive ? `0 0 0 2px ${color}33` : undefined,
+        transition: 'all 0.2s',
+      }}
+      onClick={onClick}
+      bodyStyle={{ padding: 16 }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: `${color}15`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 10,
+            color,
+            fontSize: 16,
+            fontWeight: 700,
+          }}
+        >
+          {stage.sort_order}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text strong style={{ fontSize: 15 }} ellipsis>
+            {stage.name}
+          </Text>
+          <div style={{ marginTop: 2 }}>
+            <StatusBadge status={stage.status} />
+          </div>
+        </div>
+      </div>
+      <Progress
+        percent={stage.progress_pct}
+        size="small"
+        strokeColor={color}
+        format={(p) => `${p}%`}
+      />
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          里程碑 {stage.completed_milestone_count}/{stage.milestone_count}
+        </Text>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {stage.milestones.reduce((sum, m) => sum + m.work_plans.length, 0)} 计划
+        </Text>
+      </div>
+    </Card>
+  );
+};
+
+/** Milestone timeline item */
+const MilestonePanel: React.FC<{
+  milestone: LedgerMilestone;
+  isActive: boolean;
+  onClick: () => void;
+}> = ({ milestone, isActive, onClick }) => {
+  const completedPlans = milestone.work_plans.filter((p) => p.status === 'completed').length;
+  const totalPlans = milestone.work_plans.length;
+
+  return (
+    <Card
+      size="small"
+      style={{
+        marginBottom: 12,
+        cursor: 'pointer',
+        borderLeft: isActive ? '4px solid #1677ff' : '4px solid transparent',
+        background: isActive ? '#f0f7ff' : undefined,
+        transition: 'all 0.2s',
+      }}
+      onClick={onClick}
+    >
+      <Row align="middle" justify="space-between">
+        <Col flex="auto">
+          <Space>
+            <FlagOutlined style={{ color: '#1677ff' }} />
+            <Text strong>{milestone.name}</Text>
+            <StatusBadge status={milestone.status} />
+          </Space>
+          <div style={{ marginTop: 6, paddingLeft: 24 }}>
+            <Progress
+              percent={milestone.progress_pct}
+              size="small"
+              style={{ width: 200 }}
+              format={(p) => `${p}%`}
+            />
+            <Text type="secondary" style={{ fontSize: 12, marginLeft: 12 }}>
+              作业计划 {completedPlans}/{totalPlans}
+            </Text>
+          </div>
+        </Col>
+        <Col>
+          <Badge
+            count={totalPlans}
+            style={{ backgroundColor: '#1677ff' }}
+            overflowCount={99}
+          />
+        </Col>
+      </Row>
+    </Card>
+  );
+};
+
+/** Work plan table expanded to show tasks */
+const WorkPlanTable: React.FC<{
+  workPlans: LedgerWorkPlan[];
+  onPlanClick: (plan: LedgerWorkPlan) => void;
+  activePlanId: string | null;
+}> = ({ workPlans, onPlanClick, activePlanId }) => {
+  return (
+    <Table
+      dataSource={workPlans}
+      rowKey="plan_id"
+      size="small"
+      pagination={false}
+      expandable={{
+        expandedRowRender: (record: LedgerWorkPlan) => (
+          <TaskListTable tasks={record.tasks} />
+        ),
+        rowExpandable: (record: LedgerWorkPlan) => record.tasks.length > 0,
+        expandedRowKeys: activePlanId ? [activePlanId] : [],
+        onExpandedRowsChange: (keys) => {
+          const key = keys[keys.length - 1] as string;
+          const plan = workPlans.find((p) => p.plan_id === key);
+          if (plan) onPlanClick(plan);
+        },
+      }}
+      columns={[
+        {
+          title: '序号',
+          dataIndex: 'seq_no',
+          width: 60,
+          align: 'center',
+        },
+        {
+          title: '计划名称',
+          dataIndex: 'name',
+          render: (v: string, record: LedgerWorkPlan) => (
+            <Space>
+              <ScheduleOutlined />
+              <Text strong={record.status === 'running'}>{v}</Text>
+              {record.is_system_task && <Tag color="cyan">系统</Tag>}
+            </Space>
+          ),
+        },
+        {
+          title: '时间点',
+          dataIndex: 'time_point',
+          width: 110,
+          render: (v: string) => v || '-',
+        },
+        {
+          title: '执行方式',
+          dataIndex: 'task_mode',
+          width: 100,
+          render: (v: string) => (
+            <Tag icon={v === '数字员工' ? <RobotOutlined /> : <UserOutlined />}>
+              {v}
+            </Tag>
+          ),
+        },
+        {
+          title: '任务数',
+          dataIndex: 'tasks',
+          width: 80,
+          align: 'center',
+          render: (tasks: LedgerTask[]) => (
+            <Badge count={tasks.length} style={{ backgroundColor: '#52c41a' }} overflowCount={99} />
+          ),
+        },
+        {
+          title: '状态',
+          dataIndex: 'status',
+          width: 90,
+          render: (status: string) => <StatusBadge status={status} />,
+        },
+      ]}
+    />
+  );
+};
+
+/** Task list table */
+const TaskListTable: React.FC<{ tasks: LedgerTask[] }> = ({ tasks }) => {
+  if (tasks.length === 0) {
+    return (
+      <div style={{ padding: 16, textAlign: 'center' }}>
+        <Empty description="暂无任务" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+      </div>
+    );
+  }
+
+  return (
+    <Table
+      dataSource={tasks}
+      rowKey="task_id"
+      size="small"
+      pagination={false}
+      style={{ margin: '8px 0' }}
+      columns={[
+        {
+          title: '排序',
+          dataIndex: 'sort_order',
+          width: 60,
+          align: 'center',
+        },
+        {
+          title: '任务类型',
+          dataIndex: 'task_type',
+          width: 120,
+          render: (type: string) => <TaskTypeTag type={type} />,
+        },
+        {
+          title: '任务内容',
+          dataIndex: 'content',
+          render: (v: string, record: LedgerTask) => (
+            <Text
+              code={record.task_type === 'SQL_SCRIPT'}
+              style={record.task_type === 'SQL_SCRIPT' ? { display: 'block', whiteSpace: 'pre-wrap', background: '#f6ffed' } : undefined}
+            >
+              {v}
+            </Text>
+          ),
+        },
+        {
+          title: '状态',
+          dataIndex: 'status',
+          width: 90,
+          render: (status: string) => <StatusBadge status={status} />,
+        },
+      ]}
+    />
+  );
+};
+
+// ===== Main Page =====
+const LedgerDisplay: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState<LedgerOverview | null>(null);
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
+  const [activeMilestoneId, setActiveMilestoneId] = useState<string | null>(null);
+  const [activePlanId, setActivePlanId] = useState<string | null>(null);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await monthlyApi.getLedgerOverview();
+      const data: LedgerOverview = res?.data || res;
+      setOverview(data);
+      if (data.stages.length > 0 && !activeStageId) {
+        // Default to first running or pending stage, or first stage
+        const runningStage = data.stages.find((s) => s.status === 'running');
+        setActiveStageId(runningStage?.stage_id || data.stages[0].stage_id);
+      }
+    } catch {
+      // fallback to empty
+    } finally {
+      setLoading(false);
+    }
+  }, [activeStageId]);
+
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const activeStage = overview?.stages.find((s) => s.stage_id === activeStageId);
+
+  const handleStageClick = (stageId: string) => {
+    setActiveStageId(stageId);
+    setActiveMilestoneId(null);
+    setActivePlanId(null);
+  };
+
+  const handleMilestoneClick = (milestoneId: string) => {
+    setActiveMilestoneId(milestoneId === activeMilestoneId ? null : milestoneId);
+    setActivePlanId(null);
+  };
+
+  const handlePlanClick = (plan: LedgerWorkPlan) => {
+    setActivePlanId(plan.plan_id === activePlanId ? null : plan.plan_id);
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <Spin size="large" tip="加载月账数据..." />
+      </div>
+    );
+  }
+
+  if (!overview) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <Empty description="暂无月账数据" />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 16 }}>
+      {/* ===== Header & Overall Progress ===== */}
+      <Card style={{ marginBottom: 16 }}>
+        <Row align="middle" justify="space-between" style={{ marginBottom: 16 }}>
+          <Col>
+            <Space>
+              <AppstoreOutlined style={{ fontSize: 22, color: '#1677ff' }} />
+              <Title level={4} style={{ margin: 0 }}>
+                月账作业展示 — {overview.acct_month}
+              </Title>
+            </Space>
+          </Col>
+          <Col>
+            <Space>
+              <Text type="secondary">总体进度</Text>
+              <Progress
+                type="circle"
+                percent={overview.overall_progress_pct}
+                width={60}
+                strokeColor={{ '0%': '#1677ff', '100%': '#52c41a' }}
+                format={(p) => <span style={{ fontSize: 14, fontWeight: 700 }}>{p}%</span>}
+              />
+            </Space>
+          </Col>
+        </Row>
+
+        <Row gutter={16}>
+          <Col span={4}>
+            <Statistic
+              title="作业阶段"
+              value={overview.completed_stages}
+              suffix={`/ ${overview.total_stages}`}
+              valueStyle={{ color: '#1677ff', fontSize: 22 }}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title="里程碑"
+              value={overview.completed_milestones}
+              suffix={`/ ${overview.total_milestones}`}
+              valueStyle={{ color: '#52c41a', fontSize: 22 }}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title="作业计划"
+              value={overview.completed_work_plans}
+              suffix={`/ ${overview.total_work_plans}`}
+              valueStyle={{ color: '#faad14', fontSize: 22 }}
+            />
+          </Col>
+          <Col span={4}>
+            <Statistic
+              title="任务"
+              value={overview.completed_tasks}
+              suffix={`/ ${overview.total_tasks}`}
+              valueStyle={{ color: '#eb2f96', fontSize: 22 }}
+            />
+          </Col>
+          <Col span={8}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', height: '100%' }}>
+              {Object.entries(TASK_TYPE_CONFIG).map(([key, cfg]) => (
+                <Tag key={key} color={cfg.color} icon={cfg.icon}>
+                  {cfg.label}
+                </Tag>
+              ))}
+            </div>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* ===== Stage Cards ===== */}
+      <Card title={<Space><BranchesOutlined /><span>作业阶段（点击下钻）</span></Space>} style={{ marginBottom: 16 }}>
+        <Row gutter={[12, 12]}>
+          {overview.stages.map((stage, idx) => (
+            <Col span={Math.floor(24 / overview.stages.length)} key={stage.stage_id}>
+              <StageCard
+                stage={stage}
+                index={idx}
+                isActive={stage.stage_id === activeStageId}
+                onClick={() => handleStageClick(stage.stage_id)}
+              />
+            </Col>
+          ))}
+        </Row>
+      </Card>
+
+      {/* ===== Milestones ===== */}
+      {activeStage && (
+        <Card
+          title={
+            <Space>
+              <FlagOutlined />
+              <span>
+                {activeStage.name} — 里程碑列表
+                <Text type="secondary" style={{ marginLeft: 8 }}>
+                  ({activeStage.milestones.length} 个)
+                </Text>
+              </span>
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          {activeStage.milestones.length === 0 ? (
+            <Empty description="该阶段暂无里程碑" />
+          ) : (
+            activeStage.milestones.map((ms) => (
+              <div key={ms.milestone_id}>
+                <MilestonePanel
+                  milestone={ms}
+                  isActive={ms.milestone_id === activeMilestoneId}
+                  onClick={() => handleMilestoneClick(ms.milestone_id)}
+                />
+                {/* ===== Work Plans (expand when milestone active) ===== */}
+                {ms.milestone_id === activeMilestoneId && (
+                  <div style={{ marginLeft: 24, marginBottom: 16, paddingLeft: 16, borderLeft: '2px dashed #d9d9d9' }}>
+                    <div style={{ marginBottom: 8 }}>
+                      <Text strong>
+                        <ScheduleOutlined style={{ marginRight: 6 }} />
+                        作业计划列表
+                      </Text>
+                    </div>
+                    {ms.work_plans.length === 0 ? (
+                      <Empty description="该里程碑暂无作业计划" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    ) : (
+                      <WorkPlanTable
+                        workPlans={ms.work_plans}
+                        onPlanClick={handlePlanClick}
+                        activePlanId={activePlanId}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </Card>
+      )}
+
+      {/* ===== Task Legend & Summary ===== */}
+      <Card
+        title={
+          <Space>
+            <UnorderedListOutlined />
+            <span>任务类型说明</span>
+          </Space>
+        }
+        size="small"
+      >
+        <Row gutter={16}>
+          {Object.entries(TASK_TYPE_CONFIG).map(([key, cfg]) => (
+            <Col span={6} key={key}>
+              <Card size="small" style={{ borderLeft: `3px solid var(--ant-${cfg.color}-6, ${cfg.color})` }}>
+                <Space>
+                  {cfg.icon}
+                  <Text strong>{cfg.label}</Text>
+                </Space>
+                <div style={{ marginTop: 4 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {key === 'TDP_TASK' && 'TDP调度任务，如 [TDP][统一处理][序号2251]'}
+                    {key === 'PUBLISH_MSG' && '系统发布消息通知'}
+                    {key === 'MANUAL_OP' && '人工操作步骤，如截图、核对'}
+                    {key === 'SQL_SCRIPT' && 'SQL脚本执行'}
+                  </Text>
+                </div>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card>
+    </div>
+  );
+};
+
+export default LedgerDisplay;
