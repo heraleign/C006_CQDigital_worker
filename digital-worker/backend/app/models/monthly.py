@@ -32,16 +32,29 @@ class MaMonthAccountConfig(Base):
 
 
 class MaTaskMonitor(Base):
-    """任务监控"""
+    """任务监控（含阶段/里程碑/作业计划层级）"""
     __tablename__ = "ma_task_monitor"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     account_month = Column(String(7), comment="账期")
+
+    # 层级字段
+    stage_code = Column(String(50), comment="阶段编码")
+    stage_name = Column(String(200), comment="阶段名称")
+    milestone_code = Column(String(50), comment="里程碑编码")
+    milestone_name = Column(String(200), comment="里程碑名称")
+    plan_code = Column(String(50), comment="作业计划编码")
+    plan_name = Column(String(200), comment="作业计划名称")
+
     task_code = Column(String(100), nullable=False, comment="任务编码")
     task_name = Column(String(200), comment="任务名称")
-    task_type = Column(String(50), comment="任务类型")
+    task_type = Column(String(50), comment="任务类型: TDP_TASK/PUBLISH_MSG/MANUAL_OP/SQL_SCRIPT")
+    sort_order = Column(Integer, default=0, comment="排序")
+    content = Column(Text, comment="任务内容")
+    time_point = Column(String(50), comment="时间点")
+    task_mode = Column(String(50), default="人工", comment="执行方式: 人工/数字员工")
     priority = Column(String(20), default="normal", comment="优先级: urgent/high/normal/low")
-    status = Column(String(20), default="pending", comment="状态: pending/running/completed/failed/skipped")
+    status = Column(String(20), default="pending", comment="状态: pending/running/completed/failed/skipped/paused/manual_skipped")
     progress = Column(Float, default=0, comment="进度")
     plan_start_time = Column(DateTime, comment="计划开始时间")
     plan_end_time = Column(DateTime, comment="计划结束时间")
@@ -57,6 +70,7 @@ class MaTaskMonitor(Base):
     execution_log = Column(Text, comment="执行日志")
     result_summary = Column(JSON, comment="结果摘要")
     is_critical = Column(Boolean, default=False, comment="是否关键任务")
+    is_system_task = Column(Boolean, default=False, comment="是否系统任务")
     notify_on_failure = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)

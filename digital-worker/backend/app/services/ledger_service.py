@@ -251,153 +251,107 @@ class LedgerService:
     # ==================== Ledger Overview ====================
 
     async def get_ledger_overview(self, db: AsyncSession, account_month: Optional[str] = None):
-        """Fetch full 4-level hierarchy and compute aggregates."""
-        # Query all stages with nested relations
-        result = await db.execute(
-            select(MaConfigStage)
-            .options(
-                selectinload(MaConfigStage.milestones).selectinload(
-                    MaConfigMilestone.work_plans
-                ).selectinload(MaConfigWorkPlan.tasks)
-            )
-            .order_by(MaConfigStage.sort_order)
-        )
-        stages = result.scalars().all()
+        """Fetch flattened overview from ma_task_monitor (single table)."""
+        from app.models.monthly import MaTaskMonitor
+        from datetime import datetime
+        am = account_month or datetime.now().strftime("%Y-%m")
 
-        total_stages = len(stages)
-        completed_stages = 0
-        total_milestones = 0
-        completed_milestones = 0
-        total_work_plans = 0
-        completed_work_plans = 0
+        q = await db.execute(
+            select(MaTaskMonitor)
+            .where(MaTaskMonitor.account_month == am)
+            .order_by(MaTaskMonitor.stage_code, MaTaskMonitor.milestone_code,
+                      MaTaskMonitor.plan_code, MaTaskMonitor.sort_order)
+        )
+        all_tasks = q.scalars().all()
+
+        # Group by stage -> milestone -> plan
+        stage_map = {}
+        for t in all_tasks:
+            sk = t.stage_code or "unknown"
+            if sk not in stage_map:
+                stage_map[sk] = {"stage_id": sk, "name": t.stage_name or sk,
+                    "sort_order": len(stage_map) + 1, "status": "pending",
+                    "progress_pct": 0, "milestones": {}}
+            mk = t.milestone_code or "unknown"
+            if mk not in stage_map[sk]["milestones"]:
+                stage_map[sk]["milestones"][mk] = {"milestone_id": mk,
+                    "name": t.milestone_name or mk, "sort_order": len(stage_map[sk]["milestones"]) + 1,
+                    "status": "pending", "progress_pct": 0, "work_plans": {}}
+            pk = t.plan_code or "unknown"
+            if pk not in stage_map[sk]["milestones"][mk]["work_plans"]:
+                stage_map[sk]["milestones"][mk]["work_plans"][pk] = {"plan_id": pk,
+                    "name": t.plan_name or pk, "seq_no": len(stage_map[sk]["milestones"][mk]["work_plans"]) + 1,
+                    "status": "pending", "tasks": []}
+            stage_map[sk]["milestones"][mk]["work_plans"][pk]["tasks"].append(
+                self._task_to_monitor_dict(t))
+
+        # Compute status/progress for each level
         total_tasks = 0
         completed_tasks = 0
+        stages_json = []
+        for sk in sorted(stage_map.keys()):
+            st = stage_map[sk]
+            ms_list = []
+            for mk in sorted(st["milestones"].keys()):
+                ms = st["milestones"][mk]
+                wp_list = []
+                for pk in sorted(ms["work_plans"].keys()):
+                    wp = ms["work_plans"][pk]
+                    ts = wp["tasks"]
+                    t_comp = sum(1 for t in ts if t["status"] == "completed")
+                    t_run = sum(1 for t in ts if t["status"] == "running")
+                    total_tasks += len(ts)
+                    completed_tasks += t_comp
+                    wp["status"] = "completed" if t_comp == len(ts) else ("running" if t_run > 0 else "pending")
+                    starts = [t.get("start_time") for t in ts if t.get("start_time")]
+                    ends = [t.get("end_time") for t in ts if t.get("end_time")]
+                    wp["start_time"] = min(starts) if starts else None
+                    wp["end_time"] = max(ends) if ends else None
+                    wp_list.append(wp)
+                wp_comp = sum(1 for w in wp_list if w["status"] == "completed")
+                ms["status"] = "completed" if wp_comp == len(wp_list) else ("running" if any(w["status"] == "running" for w in wp_list) else "pending")
+                ms["progress_pct"] = round(wp_comp / len(wp_list) * 100) if wp_list else 0
+                ms["work_plans"] = wp_list
+                mst = [w["start_time"] for w in wp_list if w.get("start_time")]
+                mse = [w["end_time"] for w in wp_list if w.get("end_time")]
+                ms["start_time"] = min(mst) if mst else None
+                ms["end_time"] = max(mse) if mse else None
+                ms_list.append(ms)
+            ms_comp = sum(1 for m in ms_list if m["status"] == "completed")
+            st["status"] = "completed" if ms_comp == len(ms_list) else ("running" if any(m["status"] == "running" for m in ms_list) else "pending")
+            st["progress_pct"] = round(ms_comp / len(ms_list) * 100) if ms_list else 0
+            st["milestones"] = ms_list
+            st["milestone_count"] = len(ms_list)
+            st["completed_milestone_count"] = ms_comp
+            sst = [m["start_time"] for m in ms_list if m.get("start_time")]
+            sse = [m["end_time"] for m in ms_list if m.get("end_time")]
+            st["start_time"] = min(sst) if sst else None
+            st["end_time"] = max(sse) if sse else None
+            stages_json.append(st)
 
-        stage_responses = []
-        for stage in stages:
-            stage_completed = stage.status == "completed"
-            if stage_completed:
-                completed_stages += 1
-
-            milestones = stage.milestones or []
-            milestone_count = len(milestones)
-            completed_milestone_count = sum(1 for m in milestones if m.status == "completed")
-            total_milestones += milestone_count
-            completed_milestones += completed_milestone_count
-
-            milestone_responses = []
-            for ms in milestones:
-                work_plans = ms.work_plans or []
-                wp_completed = sum(1 for wp in work_plans if wp.status == "completed")
-                total_work_plans += len(work_plans)
-                completed_work_plans += wp_completed
-
-                plan_responses = []
-                for wp in work_plans:
-                    tasks = wp.tasks or []
-                    t_completed = sum(1 for t in tasks if t.status == "completed")
-                    total_tasks += len(tasks)
-                    completed_tasks += t_completed
-
-                    # Aggregate start/end times from child tasks
-                    task_starts = [t.start_time for t in tasks if t.start_time]
-                    task_ends = [t.end_time for t in tasks if t.end_time]
-                    wp_start = min(task_starts) if task_starts else None
-                    wp_end = max(task_ends) if task_ends else None
-
-                    task_responses = []
-                    for t in tasks:
-                        task_responses.append({
-                            "task_id": t.task_code,
-                            "task_type": t.task_type,
-                            "content": t.content,
-                            "sort_order": t.sort_order,
-                            "status": t.status,
-                            "start_time": t.start_time.isoformat() if t.start_time else None,
-                            "end_time": t.end_time.isoformat() if t.end_time else None,
-                        })
-
-                    plan_responses.append({
-                        "plan_id": wp.plan_code,
-                        "seq_no": wp.seq_no,
-                        "name": wp.name,
-                        "time_point": wp.time_point,
-                        "task_mode": wp.task_mode,
-                        "is_system_task": wp.is_system_task,
-                        "status": wp.status,
-                        "start_time": wp_start.isoformat() if wp_start else None,
-                        "end_time": wp_end.isoformat() if wp_end else None,
-                        "tasks": task_responses,
-                    })
-
-                # Compute milestone progress
-                ms_progress = (wp_completed / len(work_plans) * 100) if work_plans else 0
-
-                # Aggregate milestone start/end from all child work plan tasks
-                ms_task_starts = []
-                ms_task_ends = []
-                for wp2 in work_plans:
-                    for t2 in (wp2.tasks or []):
-                        if t2.start_time: ms_task_starts.append(t2.start_time)
-                        if t2.end_time: ms_task_ends.append(t2.end_time)
-                ms_start = min(ms_task_starts) if ms_task_starts else None
-                ms_end = max(ms_task_ends) if ms_task_ends else None
-
-                milestone_responses.append({
-                    "milestone_id": ms.milestone_code,
-                    "name": ms.name,
-                    "sort_order": ms.sort_order,
-                    "status": ms.status,
-                    "progress_pct": round(ms_progress, 1),
-                    "start_time": ms_start.isoformat() if ms_start else None,
-                    "end_time": ms_end.isoformat() if ms_end else None,
-                    "work_plans": plan_responses,
-                })
-
-            # Compute stage progress
-            stage_progress = (completed_milestone_count / milestone_count * 100) if milestone_count else 0
-
-            # Aggregate stage start/end from all child tasks
-            stg_starts = []
-            stg_ends = []
-            for ms2 in milestones:
-                for wp2 in (ms2.work_plans or []):
-                    for t2 in (wp2.tasks or []):
-                        if t2.start_time: stg_starts.append(t2.start_time)
-                        if t2.end_time: stg_ends.append(t2.end_time)
-            stg_start = min(stg_starts) if stg_starts else None
-            stg_end = max(stg_ends) if stg_ends else None
-
-            stage_responses.append({
-                "stage_id": stage.stage_code,
-                "name": stage.name,
-                "sort_order": stage.sort_order,
-                "status": stage.status,
-                "progress_pct": round(stage_progress, 1),
-                "start_time": stg_start.isoformat() if stg_start else None,
-                "end_time": stg_end.isoformat() if stg_end else None,
-                "milestone_count": milestone_count,
-                "completed_milestone_count": completed_milestone_count,
-                "milestones": milestone_responses,
-            })
-
-        overall_progress = (completed_tasks / total_tasks * 100) if total_tasks else 0
-
+        overall = round(completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
         return {
-            "acct_month": account_month or "2026-06",
-            "total_stages": total_stages,
-            "completed_stages": completed_stages,
-            "total_milestones": total_milestones,
-            "completed_milestones": completed_milestones,
-            "total_work_plans": total_work_plans,
-            "completed_work_plans": completed_work_plans,
-            "total_tasks": total_tasks,
-            "completed_tasks": completed_tasks,
-            "overall_progress_pct": round(overall_progress, 1),
-            "stages": stage_responses,
+            "acct_month": am, "total_stages": len(stages_json),
+            "completed_stages": sum(1 for s in stages_json if s["status"] == "completed"),
+            "total_milestones": sum(s["milestone_count"] for s in stages_json),
+            "completed_milestones": sum(s["completed_milestone_count"] for s in stages_json),
+            "total_work_plans": sum(len(m["work_plans"]) for s in stages_json for m in s["milestones"]),
+            "completed_work_plans": sum(sum(1 for w in m["work_plans"] if w["status"] == "completed") for s in stages_json for m in s["milestones"]),
+            "total_tasks": total_tasks, "completed_tasks": completed_tasks,
+            "overall_progress_pct": overall, "stages": stages_json,
         }
 
-    # ==================== Cascade Completion Times ====================
+    @staticmethod
+    def _task_to_monitor_dict(t):
+        return {
+            "task_id": t.task_code,
+            "task_type": t.task_type,
+            "content": t.content,
+            "sort_order": t.sort_order,
+            "status": t.status,
+            "start_time": t.actual_start_time.isoformat() if t.actual_start_time else None,
+            "end_time": t.actual_end_time.isoformat() if t.actual_end_time else None,
+        }
 
     async def _cascade_completion_times(self, db: AsyncSession, task: MaConfigTask):
         """Recalculate completed_at for work_plan, milestone, and stage
