@@ -541,14 +541,14 @@ async def get_config_task(
     return success_response(data=data)
 
 
-@router.put("/config/tasks/{task_id}")
+@router.put("/config/tasks/{task_code}")
 async def update_config_task(
-    task_id: int,
+    task_code: str,
     task: ConfigTaskUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Update config task."""
-    data = await ledger_service.update_task(db, task_id, task.model_dump(exclude_unset=True))
+    """Update config task by task_code (string, e.g. TK_0_0_1_3)."""
+    data = await ledger_service.update_task_by_code(db, task_code, task.model_dump(exclude_unset=True))
     if not data:
         raise HTTPException(status_code=404, detail="任务不存在")
     return success_response(data=data, message="任务更新成功")

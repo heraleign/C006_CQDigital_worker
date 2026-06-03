@@ -49,6 +49,8 @@ async def generate_instance(db, account_month: str) -> dict:
                 tasks = t_q.scalars().all()
 
                 for t in tasks:
+                    # Calculate planned times: day offset from sort_order
+                    planned = now + timedelta(hours=t.sort_order * 2)
                     mon = MaTaskMonitor(
                         account_month=account_month,
                         stage_code=stage.stage_code,
@@ -68,6 +70,9 @@ async def generate_instance(db, account_month: str) -> dict:
                         priority="normal",
                         status="pending",
                         progress=0,
+                        plan_start_time=planned,
+                        plan_end_time=planned + timedelta(hours=2),
+                        expected_duration=7200,
                         max_retries=3,
                         created_at=now,
                     )

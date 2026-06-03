@@ -35,31 +35,31 @@ export const monthlyApi = {
   getLedgerOverview: (params?: { acct_month?: string }) => api.get('/monthly/ledger/overview', { params }),
 
   // Config - Stages
-  getStages: (params?: any) => api.get('/config/stages', { params }),
-  createStage: (data: any) => api.post('/config/stages', data),
-  updateStage: (id: string, data: any) => api.put(`/config/stages/${id}`, data),
-  deleteStage: (id: string) => api.delete(`/config/stages/${id}`),
+  getStages: (params?: any) => api.get('/monthly/config/stages', { params }),
+  createStage: (data: any) => api.post('/monthly/config/stages', data),
+  updateStage: (id: string, data: any) => api.put(`/monthly/config/stages/${id}`, data),
+  deleteStage: (id: string) => api.delete(`/monthly/config/stages/${id}`),
 
   // Config - Milestones
-  getConfigMilestones: (params?: any) => api.get('/config/milestones', { params }),
-  createConfigMilestone: (data: any) => api.post('/config/milestones', data),
-  updateConfigMilestone: (id: string, data: any) => api.put(`/config/milestones/${id}`, data),
-  deleteConfigMilestone: (id: string) => api.delete(`/config/milestones/${id}`),
+  getConfigMilestones: (params?: any) => api.get('/monthly/config/milestones', { params }),
+  createConfigMilestone: (data: any) => api.post('/monthly/config/milestones', data),
+  updateConfigMilestone: (id: string, data: any) => api.put(`/monthly/config/milestones/${id}`, data),
+  deleteConfigMilestone: (id: string) => api.delete(`/monthly/config/milestones/${id}`),
 
   // Config - Work Plans
-  getConfigWorkPlans: (params?: any) => api.get('/config/work-plans', { params }),
-  createConfigWorkPlan: (data: any) => api.post('/config/work-plans', data),
-  updateConfigWorkPlan: (id: string, data: any) => api.put(`/config/work-plans/${id}`, data),
-  deleteConfigWorkPlan: (id: string) => api.delete(`/config/work-plans/${id}`),
+  getConfigWorkPlans: (params?: any) => api.get('/monthly/config/work-plans', { params }),
+  createConfigWorkPlan: (data: any) => api.post('/monthly/config/work-plans', data),
+  updateConfigWorkPlan: (id: string, data: any) => api.put(`/monthly/config/work-plans/${id}`, data),
+  deleteConfigWorkPlan: (id: string) => api.delete(`/monthly/config/work-plans/${id}`),
 
   // Config - Tasks
-  getConfigTasks: (params?: any) => api.get('/config/tasks', { params }),
-  createConfigTask: (data: any) => api.post('/config/tasks', data),
-  updateConfigTask: (id: string, data: any) => api.put(`/config/tasks/${id}`, data),
-  deleteConfigTask: (id: string) => api.delete(`/config/tasks/${id}`),
+  getConfigTasks: (params?: any) => api.get('/monthly/config/tasks', { params }),
+  createConfigTask: (data: any) => api.post('/monthly/config/tasks', data),
+  updateConfigTask: (id: string, data: any) => api.put(`/monthly/config/tasks/${id}`, data),
+  deleteConfigTask: (id: string) => api.delete(`/monthly/config/tasks/${id}`),
 
   // Template parse
-  parseTemplate: (data: { template: string }) => api.post('/config/parse-template', data),
+  parseTemplate: (data: { template: string }) => api.post('/monthly/config/parse-template', data),
 
   // Billing Progress
   getBillingCycles: () => api.get('/monthly/billing-progress/cycles'),

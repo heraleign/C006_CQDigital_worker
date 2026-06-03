@@ -226,6 +226,18 @@ class LedgerService:
         item = result.scalar_one_or_none()
         if not item:
             return None
+        return await self._apply_task_update(db, item, data)
+
+    async def update_task_by_code(self, db: AsyncSession, task_code: str, data: dict):
+        """Update a config task by its task_code (string, e.g. TK_0_0_1_3)."""
+        result = await db.execute(select(MaConfigTask).where(MaConfigTask.task_code == task_code))
+        item = result.scalar_one_or_none()
+        if not item:
+            return None
+        return await self._apply_task_update(db, item, data)
+
+    async def _apply_task_update(self, db: AsyncSession, item: MaConfigTask, data: dict) -> Optional[dict]:
+        """Common task update logic shared by update_task and update_task_by_code."""
         for key, value in data.items():
             if value is not None and hasattr(item, key):
                 setattr(item, key, value)
@@ -251,11 +263,16 @@ class LedgerService:
     # ==================== Ledger Overview ====================
 
     async def get_ledger_overview(self, db: AsyncSession, account_month: Optional[str] = None):
-        """Fetch flattened overview from ma_task_monitor (single table)."""
-        from app.models.monthly import MaTaskMonitor
+        """Fetch 4-level ledger hierarchy from ma_task_monitor; fallback to config tables."""
+
+        # ── Normalise account_month: "202606" → "2026-06" ──
         from datetime import datetime
         am = account_month or datetime.now().strftime("%Y-%m")
+        if am and len(am) == 6 and '-' not in am:
+            am = f"{am[:4]}-{am[4:]}"
 
+        # ── Try runtime data (MaTaskMonitor) ──
+        from app.models.monthly import MaTaskMonitor
         q = await db.execute(
             select(MaTaskMonitor)
             .where(MaTaskMonitor.account_month == am)
@@ -264,7 +281,14 @@ class LedgerService:
         )
         all_tasks = q.scalars().all()
 
-        # Group by stage -> milestone -> plan
+        if all_tasks:
+            return self._build_overview_from_monitor(all_tasks, am)
+        else:
+            return await self._build_overview_from_config(db, am)
+
+    def _build_overview_from_monitor(self, all_tasks: list, account_month: str) -> dict:
+        """Build overview from MaTaskMonitor records (runtime data)."""
+        # Group by stage → milestone → plan
         stage_map = {}
         for t in all_tasks:
             sk = t.stage_code or "unknown"
@@ -331,7 +355,7 @@ class LedgerService:
 
         overall = round(completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
         return {
-            "acct_month": am, "total_stages": len(stages_json),
+            "acct_month": account_month, "total_stages": len(stages_json),
             "completed_stages": sum(1 for s in stages_json if s["status"] == "completed"),
             "total_milestones": sum(s["milestone_count"] for s in stages_json),
             "completed_milestones": sum(s["completed_milestone_count"] for s in stages_json),
@@ -339,6 +363,123 @@ class LedgerService:
             "completed_work_plans": sum(sum(1 for w in m["work_plans"] if w["status"] == "completed") for s in stages_json for m in s["milestones"]),
             "total_tasks": total_tasks, "completed_tasks": completed_tasks,
             "overall_progress_pct": overall, "stages": stages_json,
+        }
+
+    async def _build_overview_from_config(self, db: AsyncSession, account_month: str) -> dict:
+        """Build overview from config hierarchy tables when no runtime data exists."""
+        stages_q = await db.execute(
+            select(MaConfigStage).order_by(MaConfigStage.sort_order)
+        )
+        stages_db = stages_q.scalars().all()
+
+        total_tasks = 0
+        completed_tasks = 0
+        stages_json = []
+
+        for st in stages_db:
+            ms_q = await db.execute(
+                select(MaConfigMilestone)
+                .where(MaConfigMilestone.stage_id == st.id)
+                .order_by(MaConfigMilestone.sort_order)
+            )
+            milestones_db = ms_q.scalars().all()
+
+            ms_list = []
+            for ms in milestones_db:
+                wp_q = await db.execute(
+                    select(MaConfigWorkPlan)
+                    .where(MaConfigWorkPlan.milestone_id == ms.id)
+                    .order_by(MaConfigWorkPlan.seq_no)
+                )
+                plans_db = wp_q.scalars().all()
+
+                wp_list = []
+                for wp in plans_db:
+                    t_q = await db.execute(
+                        select(MaConfigTask)
+                        .where(MaConfigTask.plan_id == wp.id)
+                        .order_by(MaConfigTask.sort_order)
+                    )
+                    tasks_db = t_q.scalars().all()
+
+                    t_list = []
+                    for t in tasks_db:
+                        t_list.append({
+                            "task_id": t.task_code,
+                            "task_type": t.task_type,
+                            "content": t.content,
+                            "sort_order": t.sort_order,
+                            "status": t.status,
+                            "start_time": t.start_time.isoformat() if t.start_time else None,
+                            "end_time": t.end_time.isoformat() if t.end_time else None,
+                        })
+                        total_tasks += 1
+                        if t.status == "completed":
+                            completed_tasks += 1
+
+                    t_comp = sum(1 for tx in t_list if tx["status"] == "completed")
+                    t_run = sum(1 for tx in t_list if tx["status"] == "running")
+                    wp_starts = [tx["start_time"] for tx in t_list if tx.get("start_time")]
+                    wp_ends = [tx["end_time"] for tx in t_list if tx.get("end_time")]
+
+                    wp_list.append({
+                        "plan_id": wp.plan_code,
+                        "name": wp.name,
+                        "seq_no": wp.seq_no,
+                        "time_point": wp.time_point,
+                        "task_mode": wp.task_mode,
+                        "is_system_task": wp.is_system_task,
+                        "status": "completed" if t_comp == len(t_list) else ("running" if t_run > 0 else "pending"),
+                        "start_time": min(wp_starts) if wp_starts else None,
+                        "end_time": max(wp_ends) if wp_ends else None,
+                        "tasks": t_list,
+                    })
+
+                wp_comp = sum(1 for w in wp_list if w["status"] == "completed")
+                ms_starts = [w["start_time"] for w in wp_list if w.get("start_time")]
+                ms_ends = [w["end_time"] for w in wp_list if w.get("end_time")]
+
+                ms_list.append({
+                    "milestone_id": ms.milestone_code,
+                    "name": ms.name,
+                    "sort_order": ms.sort_order,
+                    "status": "completed" if wp_comp == len(wp_list) else ("running" if any(w["status"] == "running" for w in wp_list) else "pending"),
+                    "progress_pct": round(wp_comp / len(wp_list) * 100) if wp_list else 0,
+                    "start_time": min(ms_starts) if ms_starts else None,
+                    "end_time": max(ms_ends) if ms_ends else None,
+                    "work_plans": wp_list,
+                })
+
+            ms_comp = sum(1 for m in ms_list if m["status"] == "completed")
+            st_starts = [m["start_time"] for m in ms_list if m.get("start_time")]
+            st_ends = [m["end_time"] for m in ms_list if m.get("end_time")]
+
+            stages_json.append({
+                "stage_id": st.stage_code,
+                "name": st.name,
+                "sort_order": st.sort_order,
+                "status": "completed" if ms_comp == len(ms_list) else ("running" if any(m["status"] == "running" for m in ms_list) else "pending"),
+                "progress_pct": round(ms_comp / len(ms_list) * 100) if ms_list else 0,
+                "start_time": min(st_starts) if st_starts else None,
+                "end_time": max(st_ends) if st_ends else None,
+                "milestone_count": len(ms_list),
+                "completed_milestone_count": ms_comp,
+                "milestones": ms_list,
+            })
+
+        overall = round(completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        return {
+            "acct_month": account_month,
+            "total_stages": len(stages_json),
+            "completed_stages": sum(1 for s in stages_json if s["status"] == "completed"),
+            "total_milestones": sum(s["milestone_count"] for s in stages_json),
+            "completed_milestones": sum(s["completed_milestone_count"] for s in stages_json),
+            "total_work_plans": sum(len(m["work_plans"]) for s in stages_json for m in s["milestones"]),
+            "completed_work_plans": sum(sum(1 for w in m["work_plans"] if w["status"] == "completed") for s in stages_json for m in s["milestones"]),
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "overall_progress_pct": overall,
+            "stages": stages_json,
         }
 
     @staticmethod
