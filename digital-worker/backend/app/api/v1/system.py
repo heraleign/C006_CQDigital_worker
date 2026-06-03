@@ -6,7 +6,8 @@ from app.config import settings
 from app.services.database_service import DatabaseService
 from app.schemas.system import (
     UserCreate, UserUpdate, UserResponse,
-    ToolConfigCreate, ToolConfigUpdate, ToolConfigResponse,
+    ToolConfigCreate, ToolConfigUpdate,
+    PromptConfigCreate, PromptConfigUpdate,
 )
 
 router = APIRouter()
@@ -30,25 +31,25 @@ async def list_tools(
 
 
 @router.post("/tools")
-async def create_tool(config: ToolConfigCreate):
+async def create_tool(config: dict):
     """Create tool configuration."""
     tools = mock.get_tool_configs(page=1, page_size=200)["items"]
-    new_item = mock.create_item(tools, config.model_dump(exclude_unset=True))
+    new_item = mock.create_item(tools, config)
     return success_response(data=new_item, message="工具配置创建成功")
 
 
 @router.put("/tools/{tool_id}")
-async def update_tool(tool_id: int, config: ToolConfigUpdate):
+async def update_tool(tool_id: str, config: dict):
     """Update tool configuration."""
     tools = mock.get_tool_configs(page=1, page_size=200)["items"]
-    data = mock.update_item(tools, tool_id, config.model_dump(exclude_unset=True))
+    data = mock.update_item(tools, tool_id, config)
     if not data:
         raise HTTPException(status_code=404, detail="工具配置不存在")
     return success_response(data=data, message="更新成功")
 
 
 @router.delete("/tools/{tool_id}")
-async def delete_tool(tool_id: int):
+async def delete_tool(tool_id: str):
     """Delete tool configuration."""
     tools = mock.get_tool_configs(page=1, page_size=200)["items"]
     data = mock.delete_item(tools, tool_id)
@@ -70,15 +71,15 @@ async def list_prompts(
 
 
 @router.post("/prompts")
-async def create_prompt(config: ToolConfigCreate):
+async def create_prompt(config: PromptConfigCreate):
     """Create prompt configuration."""
     prompts = mock.get_prompt_configs(page=1, page_size=200)["items"]
-    new_item = mock.create_item(prompts, {**config.model_dump(exclude_unset=True), "config_type": "prompt"})
+    new_item = mock.create_item(prompts, config.model_dump(exclude_unset=True))
     return success_response(data=new_item, message="提示词配置创建成功")
 
 
 @router.put("/prompts/{prompt_id}")
-async def update_prompt(prompt_id: int, config: ToolConfigUpdate):
+async def update_prompt(prompt_id: str, config: PromptConfigUpdate):
     """Update prompt configuration."""
     prompts = mock.get_prompt_configs(page=1, page_size=200)["items"]
     data = mock.update_item(prompts, prompt_id, config.model_dump(exclude_unset=True))
@@ -88,7 +89,7 @@ async def update_prompt(prompt_id: int, config: ToolConfigUpdate):
 
 
 @router.delete("/prompts/{prompt_id}")
-async def delete_prompt(prompt_id: int):
+async def delete_prompt(prompt_id: str):
     """Delete prompt configuration."""
     prompts = mock.get_prompt_configs(page=1, page_size=200)["items"]
     data = mock.delete_item(prompts, prompt_id)

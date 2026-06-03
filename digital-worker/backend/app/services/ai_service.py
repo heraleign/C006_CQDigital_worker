@@ -22,7 +22,10 @@ class AIService:
 
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=60) as client:
+            # Use a short timeout so the mock fallback kicks in before the
+            # frontend (30s) or upstream client times out.  If the API key
+            # is a placeholder or the endpoint is unreachable we fail fast.
+            async with httpx.AsyncClient(timeout=5) as client:
                 response = await client.post(
                     f"{settings.AI_ENDPOINT}/chat/completions",
                     headers={

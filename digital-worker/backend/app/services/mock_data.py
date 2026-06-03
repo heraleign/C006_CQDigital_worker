@@ -1032,15 +1032,11 @@ class MockDataService:
         tools = []
         for i in range(10):
             tools.append({
-                "id": i + 1, "config_name": f"工具_{i+1}",
-                "config_code": f"TOOL_{i+1:04d}",
-                "config_type": "tool",
-                "config_value": f"工具配置值_{i+1}",
+                "tool_id": str(i + 1),
+                "tool_name": f"工具_{i+1}",
+                "tool_code": f"TOOL_{i+1:04d}",
                 "description": f"工具_{i+1}的配置描述",
-                "parameters": {"param1": "value1", "param2": i * 10},
-                "status": 1,
-                "created_at": "2024-01-01T00:00:00",
-                "updated_at": "2024-06-01T00:00:00",
+                "status": "active",
             })
         return self.paginate(tools, page, page_size)
 
@@ -1048,15 +1044,11 @@ class MockDataService:
         prompts = []
         for i in range(10):
             prompts.append({
-                "id": i + 1, "config_name": f"提示词_{i+1}",
-                "config_code": f"PROMPT_{i+1:04d}",
-                "config_type": "prompt",
-                "config_value": f"你是一个专业的数据运维助手，请帮助用户完成数据运维任务_{i+1}",
-                "description": f"提示词_{i+1}的描述",
-                "parameters": {"temperature": 0.7, "max_tokens": 2000},
-                "status": 1,
-                "created_at": "2024-01-01T00:00:00",
-                "updated_at": "2024-06-01T00:00:00",
+                "prompt_id": str(i + 1),
+                "prompt_name": f"提示词_{i+1}",
+                "prompt_type": "analysis",
+                "content": f"你是一个专业的数据运维助手，请帮助用户完成数据运维任务_{i+1}",
+                "status": "active",
             })
         return self.paginate(prompts, page, page_size)
 

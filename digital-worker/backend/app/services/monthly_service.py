@@ -70,8 +70,8 @@ class MonthlyService:
     def generate_plan(self, data: dict):
         return {"task_id": f"plan_{hash(str(data)) % 10000}", "status": "completed", "tasks": []}
 
-    def get_daily_reports(self, page=1, page_size=20):
-        return self.mock.get_daily_reports(page, page_size)
+    def get_daily_reports(self, page=1, page_size=20, **filters):
+        return self.mock.get_daily_reports(page, page_size, **filters)
 
     def get_daily_report(self, report_id: int):
         return self.mock.get_item(self.daily_reports, report_id)

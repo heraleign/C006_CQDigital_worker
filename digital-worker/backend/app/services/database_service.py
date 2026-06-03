@@ -213,11 +213,59 @@ class DatabaseService:
     def get_orchestration_tasks(self, page=1, page_size=20):
         return self._paginate(MaTaskMonitor, page, page_size, order_by=MaTaskMonitor.id)
 
-    def get_daily_reports(self, page=1, page_size=20):
-        return self._paginate(MaDailyReport, page, page_size, order_by=MaDailyReport.id)
+    def get_daily_reports(self, page=1, page_size=20, **filters):
+        flt = []
+        if filters.get("acct_month"):
+            am = filters["acct_month"]
+            # Normalize YYYYMM -> YYYY-MM
+            if isinstance(am, str) and len(am) == 6 and am.isdigit():
+                am = f"{am[:4]}-{am[4:]}"
+            flt.append(MaDailyReport.account_month == am)
+        if filters.get("report_date"):
+            from datetime import date
+            try:
+                rd = date.fromisoformat(filters["report_date"])
+                flt.append(MaDailyReport.report_date == rd)
+            except ValueError:
+                pass
+        return self._paginate(MaDailyReport, page, page_size, filters=flt or None, order_by=MaDailyReport.report_date.desc())
 
     def get_summary_reports(self, page=1, page_size=20):
-        return self._paginate(MaSummaryReport, page, page_size, order_by=MaSummaryReport.id)
+        result = self._paginate(MaSummaryReport, page, page_size, order_by=MaSummaryReport.id)
+        category_map = {
+            "monthly": "月度报表",
+            "quarterly": "季度报表",
+            "yearly": "年度报表",
+            "daily": "日报",
+            "special": "专项报表",
+        }
+        platform_map = {
+            "monthly": "邮件",
+            "quarterly": "邮件",
+            "yearly": "邮件+系统内",
+            "daily": "企业微信",
+            "special": "钉钉",
+        }
+        for item in result["items"]:
+            # Field alias: title → report_name (never None)
+            item["report_name"] = item.get("title") or ""
+            rt = item.get("report_type") or "monthly"
+            item["category"] = category_map.get(rt, "月度报表")
+            item["platform"] = platform_map.get(rt, "系统内")
+            # Compute plan_time (1 day before publish_time, or use created_at)
+            pt = item.get("publish_time") or item.get("created_at")
+            if pt:
+                if isinstance(pt, str):
+                    from datetime import datetime, timedelta
+                    try:
+                        dt = datetime.fromisoformat(pt)
+                        item["plan_time"] = (dt - timedelta(days=1)).isoformat()
+                    except ValueError:
+                        item["plan_time"] = pt
+            # Set fail_reason only when status is failed
+            if item.get("status") == "failed":
+                item["fail_reason"] = "发布目标平台连接超时，请检查网络配置后重试"
+        return result
 
     def get_alerts_records(self, page=1, page_size=20):
         return self._paginate(MaAlertRecord, page, page_size, order_by=MaAlertRecord.id)
@@ -313,6 +361,30 @@ class DatabaseService:
 
     def get_notifications(self, page=1, page_size=20):
         return self._paginate(SysNotificationRecord, page, page_size, order_by=SysNotificationRecord.id)
+
+    def get_tool_configs(self, page=1, page_size=20):
+        tools = []
+        for i in range(10):
+            tools.append({
+                "tool_id": str(i + 1),
+                "tool_name": f"工具_{i+1}",
+                "tool_code": f"TOOL_{i+1:04d}",
+                "description": f"工具_{i+1}的配置描述",
+                "status": "active",
+            })
+        return self.paginate(tools, page, page_size)
+
+    def get_prompt_configs(self, page=1, page_size=20):
+        prompts = []
+        for i in range(10):
+            prompts.append({
+                "prompt_id": str(i + 1),
+                "prompt_name": f"提示词_{i+1}",
+                "prompt_type": "analysis",
+                "content": f"你是一个专业的数据运维助手，请帮助用户完成数据运维任务_{i+1}",
+                "status": "active",
+            })
+        return self.paginate(prompts, page, page_size)
 
     def get_audit_logs(self, page=1, page_size=20):
         return self._paginate(SysAuditLog, page, page_size, order_by=SysAuditLog.id)

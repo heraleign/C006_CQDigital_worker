@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card, Progress, Table, Tag, Row, Col, Statistic,
   Typography, Badge, Empty, Spin, Space, Select,
-  Button, Dropdown, message,
+  Button, Dropdown, message, Modal,
 } from 'antd';
 import {
   CheckCircleOutlined, ClockCircleOutlined, FlagOutlined,
@@ -22,7 +22,7 @@ interface LedgerTask {
   task_type: 'TDP_TASK' | 'PUBLISH_MSG' | 'MANUAL_OP' | 'SQL_SCRIPT';
   content: string;
   sort_order: number;
-  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped';
+  status: 'completed' | 'pending' | 'running' | 'paused' | 'manual_skipped' | 'failed';
   start_time?: string;
   end_time?: string;
 }
@@ -64,6 +64,13 @@ interface LedgerStage {
   milestones: LedgerMilestone[];
 }
 
+interface ProgressSummary {
+  total_expected: number;
+  actual_completed: number;
+  delayed: number;
+  alerts: number;
+}
+
 interface LedgerOverview {
   acct_month: string;
   total_stages: number;
@@ -76,6 +83,7 @@ interface LedgerOverview {
   completed_tasks: number;
   overall_progress_pct: number;
   stages: LedgerStage[];
+  progress_summary?: ProgressSummary;
 }
 
 // ===== Constants =====
@@ -293,9 +301,18 @@ const WorkPlanTable: React.FC<{
         rowExpandable: (record: LedgerWorkPlan) => record.tasks.length > 0,
         expandedRowKeys: activePlanId ? [activePlanId] : [],
         onExpandedRowsChange: (keys) => {
-          const key = keys[keys.length - 1] as string;
-          const plan = workPlans.find((p) => p.plan_id === key);
-          if (plan) onPlanClick(plan);
+          // Collapse: active plan was removed from keys
+          if (activePlanId && !keys.includes(activePlanId)) {
+            const plan = workPlans.find((p) => p.plan_id === activePlanId);
+            if (plan) onPlanClick(plan);  // toggles activePlanId → null
+          } else if (keys.length > 0) {
+            // Expand: a new plan was added (last key)
+            const key = keys[keys.length - 1] as string;
+            if (key !== activePlanId) {
+              const plan = workPlans.find((p) => p.plan_id === key);
+              if (plan) onPlanClick(plan);
+            }
+          }
         },
       }}
       columns={[
@@ -486,6 +503,65 @@ const TaskListTable: React.FC<{ tasks: LedgerTask[]; onRefresh?: () => void }> =
 };
 
 // ===== Helpers =====
+
+/** Parse time_point "X日HH:MM" relative to acct_month "YYYYMM" → deadline Date */
+const parseTimePoint = (timePoint: string | undefined, acctMonth: string): Date | null => {
+  if (!timePoint) return null;
+  const m = /(\d+)日(\d+):(\d+)/.exec(timePoint);
+  if (!m) return null;
+  const year = parseInt(acctMonth.slice(0, 4), 10);
+  const month = parseInt(acctMonth.slice(4, 6), 10);
+  return new Date(year, month - 1, parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10));
+};
+
+/** Task enriched with stage/milestone/work_plan hierarchy info. */
+interface EnrichedTask extends LedgerTask {
+  stage_name: string;
+  milestone_name: string;
+  plan_name: string;
+  time_point?: string;
+}
+
+/** Collect tasks from all work_plans where deadline has passed, grouped by category. */
+const collectTasksByCategory = (overview: LedgerOverview, acctMonth: string) => {
+  const now = new Date();
+  const planned: EnrichedTask[] = [];
+  const completed: EnrichedTask[] = [];
+  const delayed: EnrichedTask[] = [];
+  const alerts: EnrichedTask[] = [];
+
+  for (const stage of overview.stages) {
+    for (const ms of stage.milestones) {
+      for (const wp of ms.work_plans) {
+        const deadline = parseTimePoint(wp.time_point, acctMonth);
+        const tasks = wp.tasks.map((t) => ({
+          ...t,
+          stage_name: stage.name,
+          milestone_name: ms.name,
+          plan_name: wp.name,
+          time_point: wp.time_point,
+        }));
+        for (const t of tasks) {
+          if (!deadline || deadline > now) continue;
+          planned.push(t);
+          if (t.status === 'completed') completed.push(t);
+          else delayed.push(t);
+          if (t.status === 'failed') alerts.push(t);
+        }
+      }
+    }
+  }
+  return { planned, completed, delayed, alerts };
+};
+
+/** Detail modal title + column config per category */
+const CATEGORY_COLUMNS: Record<string, { title: string; color: string }> = {
+  planned: { title: '计划完成任务列表', color: '#1677ff' },
+  completed: { title: '实际完成任务列表', color: '#52c41a' },
+  delayed: { title: '延迟任务列表', color: '#fa8c16' },
+  alerts: { title: '告警任务列表', color: '#ff4d4f' },
+};
+
 const generateAcctMonths = (): string[] => {
   const start = '202512';
   const now = new Date();
@@ -516,14 +592,54 @@ const acctMonthOptions = generateAcctMonths().map((m) => ({ value: m, label: m }
 
 const LedgerDisplay: React.FC = () => {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [overview, setOverview] = useState<LedgerOverview | null>(null);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [activeMilestoneId, setActiveMilestoneId] = useState<string | null>(null);
   const [activePlanId, setActivePlanId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(acctMonthOptions[0]?.value || '');
+  const [detailModal, setDetailModal] = useState<{
+    visible: boolean;
+    category: string;
+    tasks: EnrichedTask[];
+    title: string;
+    color: string;
+  }>({ visible: false, category: '', tasks: [], title: '', color: '' });
+  const [modalFilterStage, setModalFilterStage] = useState<string>('');
+  const [modalFilterMs, setModalFilterMs] = useState<string>('');
+  const [modalFilterStatus, setModalFilterStatus] = useState<string>('');
 
-  const fetchData = useCallback(async (month?: string) => {
-    setLoading(true);
+  const handleShowDetail = (category: string) => {
+    if (!overview) return;
+    const collected = collectTasksByCategory(overview, selectedMonth);
+    const data = collected[category as keyof typeof collected] as EnrichedTask[];
+    const cfg = CATEGORY_COLUMNS[category] || { title: category, color: '#1677ff' };
+    setDetailModal({ visible: true, category, tasks: data, title: cfg.title, color: cfg.color });
+    setModalFilterStage('');
+    setModalFilterMs('');
+    setModalFilterStatus('');
+  };
+
+  // Derived filter options from modal tasks
+  const modalStageOptions = [...new Set(detailModal.tasks.map((t) => t.stage_name))];
+  const filteredTasks = detailModal.tasks.filter((t) => {
+    if (modalFilterStage && t.stage_name !== modalFilterStage) return false;
+    if (modalFilterMs && t.milestone_name !== modalFilterMs) return false;
+    if (modalFilterStatus && t.status !== modalFilterStatus) return false;
+    return true;
+  });
+  const modalMsOptions = [...new Set(
+    detailModal.tasks
+      .filter((t) => !modalFilterStage || t.stage_name === modalFilterStage)
+      .map((t) => t.milestone_name)
+  )];
+
+  const fetchData = useCallback(async (month?: string, silent?: boolean) => {
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const res = await monthlyApi.getLedgerOverview(month ? { acct_month: month } : undefined);
       const data: LedgerOverview = res?.data || res;
@@ -537,6 +653,7 @@ const LedgerDisplay: React.FC = () => {
       // fallback to empty
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [activeStageId]);
 
@@ -589,6 +706,7 @@ const LedgerDisplay: React.FC = () => {
               <Title level={4} style={{ margin: 0 }}>
                 月账进度
               </Title>
+              {refreshing && <Spin size="small" style={{ marginLeft: 8 }} />}
               <Select
                 value={selectedMonth}
                 onChange={(val) => {
@@ -613,6 +731,53 @@ const LedgerDisplay: React.FC = () => {
             </Space>
           </Col>
         </Row>
+
+        {/* ===== Progress Summary: clickable metrics ===== */}
+        {overview.progress_summary && (
+          <div style={{
+            marginBottom: 16, padding: '10px 16px',
+            background: '#fafafa', borderRadius: 8,
+            border: '1px solid #f0f0f0',
+          }}>
+            <Space size="large">
+              <a onClick={() => handleShowDetail('planned')} style={{ cursor: 'pointer', textDecoration: 'none' }}>
+                <span style={{ color: '#1677ff', fontWeight: 600 }}>计划完成</span>
+                <span style={{ fontSize: 20, fontWeight: 700, margin: '0 4px', color: '#1677ff' }}>
+                  {overview.progress_summary.total_expected}
+                </span>
+                <Text type="secondary">项</Text>
+              </a>
+              <Text type="secondary">|</Text>
+              <a onClick={() => handleShowDetail('completed')} style={{ cursor: 'pointer', textDecoration: 'none' }}>
+                <span style={{ color: '#52c41a', fontWeight: 600 }}>实际完成</span>
+                <span style={{ fontSize: 20, fontWeight: 700, margin: '0 4px', color: '#52c41a' }}>
+                  {overview.progress_summary.actual_completed}
+                </span>
+                <Text type="secondary">项</Text>
+              </a>
+              <Text type="secondary">|</Text>
+              <a onClick={() => handleShowDetail('delayed')} style={{ cursor: 'pointer', textDecoration: 'none' }}>
+                <span style={{ color: '#fa8c16', fontWeight: 600 }}>已延迟</span>
+                <span style={{ fontSize: 20, fontWeight: 700, margin: '0 4px', color: '#fa8c16' }}>
+                  {overview.progress_summary.delayed}
+                </span>
+                <Text type="secondary">项</Text>
+              </a>
+              {overview.progress_summary.alerts > 0 && (
+                <>
+                  <Text type="secondary">|</Text>
+                  <a onClick={() => handleShowDetail('alerts')} style={{ cursor: 'pointer', textDecoration: 'none' }}>
+                    <span style={{ color: '#ff4d4f', fontWeight: 600 }}>告警</span>
+                    <span style={{ fontSize: 20, fontWeight: 700, margin: '0 4px', color: '#ff4d4f' }}>
+                      {overview.progress_summary.alerts}
+                    </span>
+                    <Text type="secondary">项</Text>
+                  </a>
+                </>
+              )}
+            </Space>
+          </div>
+        )}
 
         <Row gutter={16}>
           <Col span={4}>
@@ -658,6 +823,123 @@ const LedgerDisplay: React.FC = () => {
           </Col>
         </Row>
       </Card>
+
+      {/* ===== Detail Modal ===== */}
+      <Modal
+        title={<span style={{ color: detailModal.color }}>{detailModal.title}（{detailModal.tasks.length} 项）</span>}
+        open={detailModal.visible}
+        onCancel={() => setDetailModal({ ...detailModal, visible: false })}
+        footer={null}
+        width={1100}
+        styles={{ body: { maxHeight: '70vh', overflow: 'auto', padding: 16 } }}
+      >
+        {/* Filter row */}
+        <Space style={{ marginBottom: 12 }}>
+          <Select
+            placeholder="按阶段筛选"
+            allowClear
+            style={{ width: 150 }}
+            value={modalFilterStage || undefined}
+            onChange={(v) => { setModalFilterStage(v || ''); setModalFilterMs(''); }}
+            options={modalStageOptions.map((s) => ({ value: s, label: s }))}
+          />
+          <Select
+            placeholder="按里程碑筛选"
+            allowClear
+            style={{ width: 180 }}
+            value={modalFilterMs || undefined}
+            onChange={(v) => setModalFilterMs(v || '')}
+            options={modalMsOptions.map((s) => ({ value: s, label: s }))}
+          />
+          <Select
+            placeholder="按状态筛选"
+            allowClear
+            style={{ width: 130 }}
+            value={modalFilterStatus || undefined}
+            onChange={(v) => setModalFilterStatus(v || '')}
+            options={[
+              { value: 'completed', label: '已完成' },
+              { value: 'running', label: '进行中' },
+              { value: 'pending', label: '未开始' },
+              { value: 'paused', label: '已暂停' },
+              { value: 'manual_skipped', label: '手工放过' },
+              { value: 'failed', label: '失败' },
+            ]}
+          />
+          <Text type="secondary">
+            已筛 {filteredTasks.length} / {detailModal.tasks.length} 项
+          </Text>
+        </Space>
+
+        {/* Task table with hierarchy + operations */}
+        <Table
+          dataSource={filteredTasks}
+          rowKey="task_id"
+          size="small"
+          pagination={{ defaultPageSize: 10, pageSizeOptions: [10, 20, 50], showSizeChanger: true, showTotal: (t) => `共 ${t} 项` }}
+          columns={[
+            { title: '阶段', dataIndex: 'stage_name', width: 100, ellipsis: true },
+            { title: '里程碑', dataIndex: 'milestone_name', width: 110, ellipsis: true },
+            { title: '作业计划', dataIndex: 'plan_name', width: 130, ellipsis: true },
+            { title: '时间点', dataIndex: 'time_point', width: 80 },
+            {
+              title: '任务内容', dataIndex: 'content', ellipsis: true,
+              render: (v: string, r: EnrichedTask) => (
+                <Text code={r.task_type === 'SQL_SCRIPT'} style={r.task_type === 'SQL_SCRIPT' ? { background: '#f6ffed' } : undefined}>
+                  {v}
+                </Text>
+              ),
+            },
+            {
+              title: '类型', dataIndex: 'task_type', width: 80,
+              render: (v: string) => {
+                const cfg = TASK_TYPE_CONFIG[v] || TASK_TYPE_CONFIG.MANUAL_OP;
+                return <Tag color={cfg.color}>{cfg.label}</Tag>;
+              },
+            },
+            {
+              title: '状态', dataIndex: 'status', width: 85,
+              render: (s: string) => <StatusBadge status={s} />,
+            },
+            {
+              title: '操作', width: 100, align: 'center',
+              render: (_: unknown, record: EnrichedTask) => {
+                if (record.task_type === 'TDP_TASK') return <Text type="secondary">-</Text>;
+                const items = [
+                  { key: 'completed', label: '标记完成' },
+                  { key: 'running', label: '进行中' },
+                  { key: 'paused', label: '暂停' },
+                  { key: 'manual_skipped', label: '手工放过' },
+                  { key: 'pending', label: '标记为未完成' },
+                ].filter((item) => item.key !== record.status).map((item) => ({
+                  key: item.key,
+                  label: item.label,
+                  onClick: async () => {
+                    try {
+                      await monthlyApi.updateConfigTask(record.task_id, { status: item.key });
+                      message.success('状态更新成功');
+                      // Refresh modal data
+                      if (overview) {
+                        const collected = collectTasksByCategory(overview, selectedMonth);
+                        const data = collected[detailModal.category as keyof typeof collected] as EnrichedTask[];
+                        setDetailModal({ ...detailModal, tasks: data });
+                      }
+                      fetchData(selectedMonth, true);
+                    } catch {
+                      message.error('状态更新失败');
+                    }
+                  },
+                }));
+                return (
+                  <Dropdown menu={{ items }} placement="bottomLeft">
+                    <Button size="small" icon={<MoreOutlined />}>操作</Button>
+                  </Dropdown>
+                );
+              },
+            },
+          ]}
+        />
+      </Modal>
 
       {/* ===== Stage Cards ===== */}
       <Card title={<Space><BranchesOutlined /><span>作业阶段（点击下钻）</span></Space>} style={{ marginBottom: 16 }}>
@@ -717,7 +999,7 @@ const LedgerDisplay: React.FC = () => {
                         workPlans={ms.work_plans}
                         onPlanClick={handlePlanClick}
                         activePlanId={activePlanId}
-                        onRefresh={() => fetchData(selectedMonth)}
+                        onRefresh={() => fetchData(selectedMonth, true)}
                       />
                     )}
                   </div>

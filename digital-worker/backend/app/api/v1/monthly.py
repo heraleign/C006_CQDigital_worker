@@ -155,13 +155,16 @@ async def generate_daily_report(request: DailyReportGenerateRequest):
     return success_response(data=report, message="日报生成成功")
 
 
+@router.get("/daily-report")
 @router.get("/daily-report/list")
 async def list_daily_reports(
+    acct_month: Optional[str] = Query(None, description="账期(YYYY-MM)"),
+    report_date: Optional[str] = Query(None, description="报告日期(YYYY-MM-DD)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
 ):
-    """List daily reports."""
-    data = service.get_daily_reports(page, page_size)
+    """List daily reports with optional filters."""
+    data = service.get_daily_reports(page, page_size, acct_month=acct_month, report_date=report_date)
     return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
 
 

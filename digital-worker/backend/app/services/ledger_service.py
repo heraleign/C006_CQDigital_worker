@@ -1,5 +1,6 @@
 """Ledger service for monthly 4-level hierarchy."""
 from typing import Optional
+from datetime import datetime
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -238,18 +239,53 @@ class LedgerService:
 
     async def _apply_task_update(self, db: AsyncSession, item: MaConfigTask, data: dict) -> Optional[dict]:
         """Common task update logic shared by update_task and update_task_by_code."""
+        now = datetime.now()
+
         for key, value in data.items():
             if value is not None and hasattr(item, key):
                 setattr(item, key, value)
         # If status changed to completed and no end_time, set it now
         if data.get("status") == "completed" and item.end_time is None:
-            from datetime import datetime
-            item.end_time = datetime.now()
+            item.end_time = now
         await db.commit()
         await db.refresh(item)
-        # Cascade completion times up the hierarchy
+        # Cascade completion times up the config hierarchy
         await self._cascade_completion_times(db, item)
+        # Sync status to MaTaskMonitor so the ledger overview reflects the change
+        await self._sync_task_status_to_monitor(db, item.task_code, data, now)
         return self._task_to_dict(item)
+
+    async def _sync_task_status_to_monitor(self, db: AsyncSession, task_code: str, data: dict, now: datetime):
+        """Sync status/end_time from config task update to runtime MaTaskMonitor records."""
+        from app.models.monthly import MaTaskMonitor
+        q = await db.execute(
+            select(MaTaskMonitor).where(MaTaskMonitor.task_code == task_code)
+        )
+        monitors = q.scalars().all()
+        updated = False
+        status = data.get("status")
+        for mon in monitors:
+            if status:
+                mon.status = status
+            if status == "completed":
+                if mon.actual_end_time is None:
+                    mon.actual_end_time = now
+                if mon.actual_start_time is None:
+                    mon.actual_start_time = now
+                mon.progress = 100
+            elif status == "running":
+                if mon.actual_start_time is None:
+                    mon.actual_start_time = now
+                mon.progress = max(mon.progress or 0, 50)
+            elif status == "manual_skipped":
+                if mon.actual_end_time is None:
+                    mon.actual_end_time = now
+                mon.progress = 100
+            elif status == "pending":
+                mon.progress = 0
+            updated = True
+        if updated:
+            await db.commit()
 
     async def delete_task(self, db: AsyncSession, task_id: int):
         result = await db.execute(select(MaConfigTask).where(MaConfigTask.id == task_id))
@@ -266,7 +302,6 @@ class LedgerService:
         """Fetch 4-level ledger hierarchy from ma_task_monitor; fallback to config tables."""
 
         # ── Normalise account_month: "202606" → "2026-06" ──
-        from datetime import datetime
         am = account_month or datetime.now().strftime("%Y-%m")
         if am and len(am) == 6 and '-' not in am:
             am = f"{am[:4]}-{am[4:]}"
@@ -305,7 +340,7 @@ class LedgerService:
             if pk not in stage_map[sk]["milestones"][mk]["work_plans"]:
                 stage_map[sk]["milestones"][mk]["work_plans"][pk] = {"plan_id": pk,
                     "name": t.plan_name or pk, "seq_no": len(stage_map[sk]["milestones"][mk]["work_plans"]) + 1,
-                    "status": "pending", "tasks": []}
+                    "time_point": t.time_point, "status": "pending", "tasks": []}
             stage_map[sk]["milestones"][mk]["work_plans"][pk]["tasks"].append(
                 self._task_to_monitor_dict(t))
 
@@ -322,31 +357,31 @@ class LedgerService:
                 for pk in sorted(ms["work_plans"].keys()):
                     wp = ms["work_plans"][pk]
                     ts = wp["tasks"]
-                    t_comp = sum(1 for t in ts if t["status"] == "completed")
-                    t_run = sum(1 for t in ts if t["status"] == "running")
+                    t_statuses = [t["status"] for t in ts]
+                    t_comp = sum(1 for s in t_statuses if s == "completed")
                     total_tasks += len(ts)
                     completed_tasks += t_comp
-                    wp["status"] = "completed" if t_comp == len(ts) else ("running" if t_run > 0 else "pending")
+                    wp["status"] = self._aggregate_status(t_statuses)
                     starts = [t.get("start_time") for t in ts if t.get("start_time")]
                     ends = [t.get("end_time") for t in ts if t.get("end_time")]
                     wp["start_time"] = min(starts) if starts else None
                     wp["end_time"] = max(ends) if ends else None
                     wp_list.append(wp)
-                wp_comp = sum(1 for w in wp_list if w["status"] == "completed")
-                ms["status"] = "completed" if wp_comp == len(wp_list) else ("running" if any(w["status"] == "running" for w in wp_list) else "pending")
-                ms["progress_pct"] = round(wp_comp / len(wp_list) * 100) if wp_list else 0
+                wp_statuses = [w["status"] for w in wp_list]
+                ms["status"] = self._aggregate_status(wp_statuses)
+                ms["progress_pct"] = round(sum(1 for s in wp_statuses if s == "completed") / len(wp_statuses) * 100) if wp_statuses else 0
                 ms["work_plans"] = wp_list
                 mst = [w["start_time"] for w in wp_list if w.get("start_time")]
                 mse = [w["end_time"] for w in wp_list if w.get("end_time")]
                 ms["start_time"] = min(mst) if mst else None
                 ms["end_time"] = max(mse) if mse else None
                 ms_list.append(ms)
-            ms_comp = sum(1 for m in ms_list if m["status"] == "completed")
-            st["status"] = "completed" if ms_comp == len(ms_list) else ("running" if any(m["status"] == "running" for m in ms_list) else "pending")
-            st["progress_pct"] = round(ms_comp / len(ms_list) * 100) if ms_list else 0
+            ms_statuses = [m["status"] for m in ms_list]
+            st["status"] = self._aggregate_status(ms_statuses)
+            st["progress_pct"] = round(sum(1 for s in ms_statuses if s == "completed") / len(ms_statuses) * 100) if ms_statuses else 0
             st["milestones"] = ms_list
             st["milestone_count"] = len(ms_list)
-            st["completed_milestone_count"] = ms_comp
+            st["completed_milestone_count"] = sum(1 for s in ms_statuses if s == "completed")
             sst = [m["start_time"] for m in ms_list if m.get("start_time")]
             sse = [m["end_time"] for m in ms_list if m.get("end_time")]
             st["start_time"] = min(sst) if sst else None
@@ -354,6 +389,8 @@ class LedgerService:
             stages_json.append(st)
 
         overall = round(completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+        now = datetime.now()
+        summary = self._compute_progress_summary(stages_json, account_month, now)
         return {
             "acct_month": account_month, "total_stages": len(stages_json),
             "completed_stages": sum(1 for s in stages_json if s["status"] == "completed"),
@@ -363,6 +400,7 @@ class LedgerService:
             "completed_work_plans": sum(sum(1 for w in m["work_plans"] if w["status"] == "completed") for s in stages_json for m in s["milestones"]),
             "total_tasks": total_tasks, "completed_tasks": completed_tasks,
             "overall_progress_pct": overall, "stages": stages_json,
+            "progress_summary": summary,
         }
 
     async def _build_overview_from_config(self, db: AsyncSession, account_month: str) -> dict:
@@ -417,8 +455,7 @@ class LedgerService:
                         if t.status == "completed":
                             completed_tasks += 1
 
-                    t_comp = sum(1 for tx in t_list if tx["status"] == "completed")
-                    t_run = sum(1 for tx in t_list if tx["status"] == "running")
+                    t_statuses = [tx["status"] for tx in t_list]
                     wp_starts = [tx["start_time"] for tx in t_list if tx.get("start_time")]
                     wp_ends = [tx["end_time"] for tx in t_list if tx.get("end_time")]
 
@@ -429,13 +466,13 @@ class LedgerService:
                         "time_point": wp.time_point,
                         "task_mode": wp.task_mode,
                         "is_system_task": wp.is_system_task,
-                        "status": "completed" if t_comp == len(t_list) else ("running" if t_run > 0 else "pending"),
+                        "status": self._aggregate_status(t_statuses),
                         "start_time": min(wp_starts) if wp_starts else None,
                         "end_time": max(wp_ends) if wp_ends else None,
                         "tasks": t_list,
                     })
 
-                wp_comp = sum(1 for w in wp_list if w["status"] == "completed")
+                wp_statuses = [w["status"] for w in wp_list]
                 ms_starts = [w["start_time"] for w in wp_list if w.get("start_time")]
                 ms_ends = [w["end_time"] for w in wp_list if w.get("end_time")]
 
@@ -443,14 +480,14 @@ class LedgerService:
                     "milestone_id": ms.milestone_code,
                     "name": ms.name,
                     "sort_order": ms.sort_order,
-                    "status": "completed" if wp_comp == len(wp_list) else ("running" if any(w["status"] == "running" for w in wp_list) else "pending"),
-                    "progress_pct": round(wp_comp / len(wp_list) * 100) if wp_list else 0,
+                    "status": self._aggregate_status(wp_statuses),
+                    "progress_pct": round(sum(1 for s in wp_statuses if s == "completed") / len(wp_statuses) * 100) if wp_statuses else 0,
                     "start_time": min(ms_starts) if ms_starts else None,
                     "end_time": max(ms_ends) if ms_ends else None,
                     "work_plans": wp_list,
                 })
 
-            ms_comp = sum(1 for m in ms_list if m["status"] == "completed")
+            ms_statuses = [m["status"] for m in ms_list]
             st_starts = [m["start_time"] for m in ms_list if m.get("start_time")]
             st_ends = [m["end_time"] for m in ms_list if m.get("end_time")]
 
@@ -458,12 +495,12 @@ class LedgerService:
                 "stage_id": st.stage_code,
                 "name": st.name,
                 "sort_order": st.sort_order,
-                "status": "completed" if ms_comp == len(ms_list) else ("running" if any(m["status"] == "running" for m in ms_list) else "pending"),
-                "progress_pct": round(ms_comp / len(ms_list) * 100) if ms_list else 0,
+                "status": self._aggregate_status(ms_statuses),
+                "progress_pct": round(sum(1 for s in ms_statuses if s == "completed") / len(ms_statuses) * 100) if ms_statuses else 0,
                 "start_time": min(st_starts) if st_starts else None,
                 "end_time": max(st_ends) if st_ends else None,
                 "milestone_count": len(ms_list),
-                "completed_milestone_count": ms_comp,
+                "completed_milestone_count": sum(1 for s in ms_statuses if s == "completed"),
                 "milestones": ms_list,
             })
 
@@ -480,6 +517,61 @@ class LedgerService:
             "completed_tasks": completed_tasks,
             "overall_progress_pct": overall,
             "stages": stages_json,
+            "progress_summary": self._compute_progress_summary(stages_json, account_month, datetime.now()),
+        }
+
+    @staticmethod
+    def _compute_progress_summary(stages: list, account_month: str, now: datetime) -> dict:
+        """Compute expected vs actual progress by comparing time_point with current time.
+
+        time_point format: 'X日HH:MM' (e.g. '1日10:00').
+        Parsed relative to account_month to get a deadline datetime.
+        """
+        import re
+        total_expected = 0
+        actual_completed = 0
+        delayed = 0
+        alerts = 0
+
+        # Parse account_month: "2026-06" → year=2026, month=6
+        parts = account_month.split("-")
+        base_year = int(parts[0])
+        base_month = int(parts[1])
+
+        for stage in stages:
+            for ms in stage.get("milestones", []):
+                for wp in ms.get("work_plans", []):
+                    tp = wp.get("time_point")
+                    if not tp:
+                        continue
+                    # Parse "N日HH:MM" → datetime(year, month, day, hour, minute)
+                    m = re.match(r"(\d+)日(\d+):(\d+)", tp)
+                    if not m:
+                        continue
+                    day, hour, minute = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    try:
+                        deadline = datetime(base_year, base_month, day, hour, minute)
+                    except ValueError:
+                        continue
+
+                    # Tasks in this work_plan
+                    tasks = wp.get("tasks", [])
+                    task_statuses = [t["status"] for t in tasks]
+                    all_completed = all(s == "completed" for s in task_statuses)
+
+                    # If deadline has passed, these tasks should ideally be done
+                    if deadline <= now:
+                        total_expected += len(tasks)
+                        actual_completed += sum(1 for s in task_statuses if s == "completed")
+                        if not all_completed:
+                            delayed += len([s for s in task_statuses if s != "completed"])
+                        alerts += sum(1 for s in task_statuses if s == "failed")
+
+        return {
+            "total_expected": total_expected,
+            "actual_completed": actual_completed,
+            "delayed": delayed,
+            "alerts": alerts,
         }
 
     @staticmethod
@@ -493,6 +585,25 @@ class LedgerService:
             "start_time": t.actual_start_time.isoformat() if t.actual_start_time else None,
             "end_time": t.actual_end_time.isoformat() if t.actual_end_time else None,
         }
+
+    @staticmethod
+    def _aggregate_status(child_statuses: list) -> str:
+        """Aggregate child statuses into parent status.
+
+        Priority (highest first): failed > running > paused > manual_skipped > completed > pending.
+        - If ALL children are completed → completed
+        - Otherwise pick the highest-priority active status among children.
+        """
+        if not child_statuses:
+            return "pending"
+        # All completed → completed
+        if all(s == "completed" for s in child_statuses):
+            return "completed"
+        # Check active statuses in priority order
+        for status in ("failed", "running", "paused", "manual_skipped"):
+            if any(s == status for s in child_statuses):
+                return status
+        return "pending"
 
     async def _cascade_completion_times(self, db: AsyncSession, task: MaConfigTask):
         """Recalculate completed_at for work_plan, milestone, and stage

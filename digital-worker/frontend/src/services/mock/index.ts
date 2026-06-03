@@ -139,33 +139,56 @@ function generateResultStats(params?: any) {
 }
 // ===== Root Cause Mock Data =====
 function generateKnowledge() {
-  const titles = ['账单延迟处理方案', '收入异常排查流程', '用户数据缺失修复', 'ARPU波动分析方法', '出账数据核对规范', '数据口径变更记录', 'ETL任务失败处理', '数据质量提升方案'];
+  const titles = [
+    '某省4G话单采集延迟导致出账推迟',
+    '收入月账1号批次延迟4小时',
+    'CRM客户数据日同步延迟3小时',
+    '省际数据同步延迟导致集团报表异常',
+    '客户信息表20%记录缺少手机号',
+    '账单金额与计费汇总偏差0.35%',
+    '订单状态5%卡在待支付超48小时',
+    '套餐变更后计费未切换导致多扣费',
+    'IDC存储故障导致历史数据丢失',
+    '计费系统数据库连接池耗尽',
+    '调度系统OOM导致批量任务失败',
+    '月末集中入账导致月账延迟6小时',
+    '新套餐首日订购量暴增8倍',
+    '集团考核口径变更导致报表偏差5%',
+    '省公司收入对账差异37万元',
+    '账单查询接口超时率30%',
+    '订单中心接口超时链式故障',
+    '产品实例表数据重复60%',
+  ];
+  const categories = ['账单类', '用户类', '产品类', '收入类', '渠道类', '系统故障类', '接口类'];
+  const contents = [
+    `问题描述：某省分公司4G话单数据采集任务延迟2.5小时完成，导致后续计费批价、账单生成等全链路延迟，最终出账推迟1.5小时。
+
+处理步骤：
+1. 确认上游网元接口超时原因
+2. 增加接口超时时间从30s到120s
+3. 采集线程池扩容50%
+4. 添加熔断降级机制
+
+经验总结：多系统依赖场景下单个接口抖动会级联放大，必须对全链路接口设置熔断和降级策略。`,
+    `问题描述：收入月账1号批次数据采集延迟4小时，原定凌晨2点启动的任务直到早上6点才完成。
+
+处理步骤：
+1. 动态调整采集资源
+2. 建立数据量预警机制
+3. 按数据量预估自动扩容
+
+经验总结：账期切换日需提前评估数据量变化趋势，预留buffer资源应对突发增量。`,
+  ];
+  // Generate 20 docs cycling through titles and contents
   return list(20, (i) => ({
     doc_id: `DOC_${String(i + 1).padStart(4, '0')}`,
     title: titles[i % titles.length],
     category: pick(categories),
-    content: `## ${titles[i % titles.length]}
-
-### 问题描述
-在数据运维过程中，${titles[i % titles.length]}是一个常见问题。
-
-### 处理步骤
-1. 确认数据来源
-2. 检查数据链路
-3. 分析异常原因
-4. 制定修复方案
-5. 执行修复并验证
-
-### 注意事项
-- 操作前需备份数据
-- 关注上下游影响
-- 做好变更记录`,
-    tags: pick([['数据质量', '稽核'], ['性能', '优化'], ['故障', '恢复'], ['规范', '标准'], ['监控', '告警']]),
+    content: contents[i % contents.length] || contents[0],
+    tags: pick([['数据延迟', '话单采集'], ['数据质量', '缺失'], ['系统故障', '存储'], ['业务异常', '对账'], ['接口性能', '超时']]),
     create_time: dayjs().subtract(rand(1, 180), 'day').format('YYYY-MM-DD HH:mm:ss'),
   }));
-}
-
-function generateAnalysis() {
+}function generateAnalysis() {
   return list(15, (i) => ({
     record_id: `AR_${String(i + 1).padStart(4, '0')}`,
     problem_description: `${pick(problemTypes)}问题-${dayjs().subtract(i, 'day').format('YYYY-MM-DD')}`,

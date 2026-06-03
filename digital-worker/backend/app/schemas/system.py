@@ -157,28 +157,27 @@ class NotificationResponse(BaseModel):
     created_at: Optional[datetime] = None
 
 
-# --- Prompt Config (Tool/Prompt management) ---
+# --- Tool Config (工具注册) ---
 class ToolConfigCreate(BaseModel):
-    config_name: str
-    config_code: Optional[str] = None
-    config_type: str = "tool"
-    config_value: Optional[str] = None
+    tool_name: str
+    tool_code: Optional[str] = None
     description: Optional[str] = None
-    parameters: Optional[Any] = None
 
 
-class ToolConfigUpdate(ToolConfigCreate):
-    config_name: Optional[str] = None
-
-
-class ToolConfigResponse(BaseModel):
-    id: int
-    config_name: str
-    config_code: Optional[str] = None
-    config_type: str
-    config_value: Optional[str] = None
+class ToolConfigUpdate(BaseModel):
+    tool_name: Optional[str] = None
+    tool_code: Optional[str] = None
     description: Optional[str] = None
-    parameters: Optional[Any] = None
-    status: int = 1
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+
+
+# --- Prompt Config (Prompt管理) ---
+class PromptConfigCreate(BaseModel):
+    prompt_name: str
+    prompt_type: str = "analysis"
+    content: Optional[str] = None
+
+
+class PromptConfigUpdate(BaseModel):
+    prompt_name: Optional[str] = None
+    prompt_type: Optional[str] = None
+    content: Optional[str] = None
