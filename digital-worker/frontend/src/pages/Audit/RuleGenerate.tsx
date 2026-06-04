@@ -31,7 +31,11 @@ const RuleGenerate: React.FC = () => {
     if (targetKeys.length === 0) { message.warning('请先选择稽核字段'); return; }
     setGenerating(true); setCurrentStep(1); setError(null);
     try {
-      const res = await auditApi.generateRules(targetKeys);
+      const res = await auditApi.generateRules({
+        table_name: '',
+        field_ids: targetKeys,
+        business_scenario: null,
+      });
       const steps = ['正在连接AI引擎...', '分析字段特征...', '匹配规则模板...', '计算阈值参数...', '生成规则建议...'];
       for (let i = 0; i < steps.length; i++) { setGenerateStatus(steps[i]); await new Promise((r) => setTimeout(r, 500)); }
       const mockRules = targetKeys.map((key, idx) => {

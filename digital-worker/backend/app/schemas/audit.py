@@ -84,8 +84,8 @@ class AuditRuleResponse(BaseModel):
 
 # --- AI Generate ---
 class AiGenerateRequest(BaseModel):
-    table_name: str
-    field_ids: list[int] = []
+    table_name: Optional[str] = ""
+    field_ids: list[str] = []
     business_scenario: Optional[str] = None
 
 
@@ -97,7 +97,7 @@ class AiGenerateStatusResponse(BaseModel):
 
 
 class BatchConfirmRequest(BaseModel):
-    rule_ids: list[int]
+    rule_ids: list[str]
     confirm_status: str = "confirmed"
 
 

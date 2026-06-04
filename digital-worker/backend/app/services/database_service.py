@@ -47,8 +47,9 @@ class DatabaseService:
     # ==================== Pagination Helper ====================
 
     @staticmethod
-    def paginate(items, page, page_size):
-        total = len(items) if isinstance(items, list) else 0
+    def paginate(items, page, page_size, total=None):
+        if total is None:
+            total = len(items) if isinstance(items, list) else 0
         total_pages = max(1, (total + page_size - 1) // page_size) if page_size > 0 else 0
         start = (page - 1) * page_size
         end = start + page_size
@@ -96,7 +97,7 @@ class DatabaseService:
             if order_by is not None: q = q.order_by(order_by)
             q = q.offset((page-1)*page_size).limit(page_size)
             items = [self._to_dict(r) for r in session.execute(q).scalars().all()]
-            return self.paginate(items, page, page_size)
+            return self.paginate(items, page, page_size, total=total)
         finally:
             session.close()
 

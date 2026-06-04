@@ -22,25 +22,23 @@ const AlertManage: React.FC = () => {
   const [ruleForm] = Form.useForm();
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     setError(null);
     try {
-      if (activeTab === 'importance') {
-        const res = await auditApi.getImportanceConfigs();
-        setImportanceConfigs(res.data?.items || (Array.isArray(res.data) ? res.data : []));
-      } else if (activeTab === 'upgrade') {
-        const res = await auditApi.getUpgradeRules();
-        setUpgradeRules(res.data?.items || (Array.isArray(res.data) ? res.data : []));
-      } else if (activeTab === 'alerts') {
-        const res = await auditApi.getAlerts({ page: 1, page_size: 50 });
-        setAlerts(res.data?.items || []);
-      }
+      const [importanceRes, upgradeRes, alertsRes] = await Promise.all([
+        auditApi.getImportanceConfigs(),
+        auditApi.getUpgradeRules(),
+        auditApi.getAlerts({ page: 1, page_size: 50 }),
+      ]);
+      setImportanceConfigs(importanceRes.data?.items || (Array.isArray(importanceRes.data) ? importanceRes.data : []));
+      setUpgradeRules(upgradeRes.data?.items || (Array.isArray(upgradeRes.data) ? upgradeRes.data : []));
+      setAlerts(alertsRes.data?.items || []);
     } catch (err: any) { setError(err?.message || '加载失败'); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, [activeTab]);
+  useEffect(() => { fetchAllData(); }, []);
 
   const handleAlertAction = async (alertId: string, action: string) => {
     setActionLoading(alertId);

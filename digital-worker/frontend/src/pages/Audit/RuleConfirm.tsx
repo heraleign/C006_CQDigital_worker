@@ -19,26 +19,27 @@ const RuleConfirm: React.FC = () => {
   const [taskForm] = Form.useForm();
   const [confirmLoading, setConfirmLoading] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchAllData = async () => {
     setLoading(true);
     setError(null);
     try {
       const params = { page: 1, page_size: 50 };
-      if (activeTab === 'pending') {
-        const res = await auditApi.getRules({ ...params, status: 'pending' });
-        setPendingRules(res.data?.items || []);
-      } else if (activeTab === 'confirmed') {
-        const res = await auditApi.getRules({ ...params, status: 'confirmed' });
-        setConfirmedRules(res.data?.items || []);
-      } else if (activeTab === 'tasks') {
-        const res = await auditApi.getTasks(params);
-        setTasks(res.data?.items || []);
-      }
+      // Fetch all tabs data on mount so counts aren't 0
+      const [pendingRes, confirmedRes, tasksRes] = await Promise.all([
+        auditApi.getRules({ ...params, status: 'pending' }),
+        auditApi.getRules({ ...params, status: 'confirmed' }),
+        auditApi.getTasks(params),
+      ]);
+      const pendingItems = pendingRes.data?.items || [];
+      const confirmedItems = confirmedRes.data?.items || [];
+      setPendingRules(pendingItems);
+      setConfirmedRules(confirmedItems);
+      setTasks(tasksRes.data?.items || []);
     } catch (err: any) { setError(err?.message || '加载失败'); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, [activeTab]);
+  useEffect(() => { fetchAllData(); }, []);
 
   const handleConfirm = async (ruleId: string) => {
     setConfirmLoading(ruleId);
