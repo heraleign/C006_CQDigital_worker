@@ -144,7 +144,7 @@ const StageCard: React.FC<{
         transition: 'all 0.2s',
       }}
       onClick={onClick}
-      bodyStyle={{ padding: 16 }}
+      styles={{ body: { padding: 16 } }}
     >
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
         <div
@@ -724,7 +724,7 @@ const LedgerDisplay: React.FC = () => {
               <Progress
                 type="circle"
                 percent={overview.overall_progress_pct}
-                width={60}
+                size={60}
                 strokeColor={{ '0%': '#1677ff', '100%': '#52c41a' }}
                 format={(p) => <span style={{ fontSize: 14, fontWeight: 700 }}>{p}%</span>}
               />

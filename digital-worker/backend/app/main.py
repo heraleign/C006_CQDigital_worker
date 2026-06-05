@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
@@ -30,9 +31,54 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Data Operations Digital Employee Platform API",
+    description="数据运维数字员工平台 — 数据质量稽核、根因分析、月账监控一体化运维平台",
     lifespan=lifespan,
+    contact={
+        "name": "CQ Digital Worker Team",
+        "email": "support@example.com",
+    },
+    license_info={
+        "name": "Proprietary",
+    },
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="数据运维数字员工平台 API",
+        version=settings.APP_VERSION,
+        description="""# 数据运维数字员工平台
+
+## 模块概览
+
+| 模块 | 路径 | 说明 |
+|------|------|------|
+| 📊 Dashboard | `/api/v1/dashboard` | 首页看板：任务概览、质量评分、趋势图表 |
+| 🔍 Audit | `/api/v1/audit` | 数据质量稽核：指标配置、AI规则生成、规则确认、告警管理、结果查看 |
+| 🧬 Root Cause | `/api/v1/root-cause` | 根因分析：智能分析、知识库、任务诊断、案例库 |
+| 📅 Monthly | `/api/v1/monthly` | 月账监控：进度跟踪、任务监控、日报报告 |
+| 🤖 Assistant | `/api/v1/assistant` | AI助手：对话会话、消息管理 |
+| ⚙️ Settings | `/api/v1/settings` | 系统设置：用户管理、角色权限、配置管理 |
+
+## 运行模式
+
+- **USE_MOCK=true**: 后端 Mock 模式，无需数据库
+- **USE_MOCK=false**: 数据库模式，需 MySQL + 种子数据（当前模式）
+""",
+        routes=app.routes,
+    )
+    openapi_schema["info"]["x-logo"] = {
+        "url": ""
+    }
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # CORS middleware
 app.add_middleware(

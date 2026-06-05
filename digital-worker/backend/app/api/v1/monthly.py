@@ -1,6 +1,6 @@
 """Monthly module API endpoints - 12+ endpoints."""
 from fastapi import APIRouter, Query, Path, HTTPException, Depends
-from typing import Optional
+from typing import Optional, Any, Dict
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +22,56 @@ from app.schemas.monthly import (
 router = APIRouter()
 service = MonthlyService()
 ledger_service = LedgerService()
+
+# ==================== Field Mapping ====================
+
+_STATUS_MAP = {
+    "pending": "未开始", "running": "进行中", "completed": "已完成",
+    "failed": "异常", "skipped": "已跳过", "paused": "已暂停", "manual_skipped": "手动跳过",
+}
+
+_CYCLE_STATUS_MAP = {
+    "pending": "pending", "processing": "processing",
+    "completed": "completed", "active": "active",
+}
+
+
+def _transform_billing_task(t: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Map backend MaTaskMonitor fields to frontend BillingTask format."""
+    if not t:
+        return None
+    acct_month = (t.get("account_month") or "")
+    dep_ids = t.get("dependency_ids")
+    if isinstance(dep_ids, list):
+        dep_str = ",".join(str(x) for x in dep_ids)
+    else:
+        dep_str = str(dep_ids) if dep_ids else None
+
+    dur_sec = t.get("expected_duration") or t.get("duration_seconds") or 0
+    dur_min = round(dur_sec / 60) if dur_sec else 0
+
+    status_en = t.get("status", "pending")
+    status_cn = _STATUS_MAP.get(status_en, status_en)
+
+    return {
+        "task_id": t.get("id"),
+        "cycle_id": acct_month.replace("-", ""),
+        "task_code": t.get("task_code", ""),
+        "task_name": t.get("task_name", ""),
+        "work_type": t.get("stage_name") or t.get("task_type") or t.get("plan_name") or "",
+        "planned_start": (t.get("plan_start_time") or ""),
+        "planned_end": (t.get("plan_end_time") or ""),
+        "duration_minutes": dur_min,
+        "dependency_codes": dep_str,
+        "assignee": t.get("owner", ""),
+        "status": status_cn,
+        "actual_start": (t.get("actual_start_time") or ""),
+        "actual_end": (t.get("actual_end_time") or ""),
+        "remark": t.get("error_message", ""),
+        "priority": t.get("priority", "normal"),
+        "progress": t.get("progress", 0),
+        "is_critical": t.get("is_critical", False),
+    }
 
 
 # ==================== Progress & Dashboard Endpoints ====================
@@ -67,6 +117,14 @@ async def get_task_logs(task_id: int):
 
 
 # ==================== Orchestration Endpoints ====================
+
+@router.get("/orchestration")
+async def list_orchestration_redirect():
+    """Redirect /orchestration to /orchestration/tasks (frontend compatibility)."""
+    from app.utils.response import paginated_response
+    data = service.get_orchestration_tasks(page=1, page_size=200)
+    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+
 
 @router.get("/orchestration/tasks")
 async def list_orchestration_tasks(
@@ -261,6 +319,8 @@ async def list_billing_cycles():
 async def get_billing_progress_gantt(cycle_id: str = Query("202601")):
     """Get billing progress Gantt chart data."""
     data = service.get_billing_progress_gantt(cycle_id)
+    tasks = [_transform_billing_task(t) for t in data.get("tasks", []) if t]
+    data["tasks"] = tasks
     return success_response(data=data)
 
 
@@ -270,9 +330,12 @@ async def list_billing_progress_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(200, ge=1, le=500),
 ):
-    """List billing progress tasks."""
+    """List billing progress tasks (transformed)."""
     data = service.get_billing_progress_tasks(cycle_id, page, page_size)
-    return paginated_response(data["items"], data["total"], data["page"], data["page_size"])
+    return paginated_response(
+        [_transform_billing_task(t) for t in data["items"]],
+        data["total"], data["page"], data["page_size"],
+    )
 
 
 @router.post("/billing-progress/tasks")

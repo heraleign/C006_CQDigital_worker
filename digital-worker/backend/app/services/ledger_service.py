@@ -230,12 +230,56 @@ class LedgerService:
         return await self._apply_task_update(db, item, data)
 
     async def update_task_by_code(self, db: AsyncSession, task_code: str, data: dict):
-        """Update a config task by its task_code (string, e.g. TK_0_0_1_3)."""
+        """Update a config task by its task_code (string).
+        Falls back to MaTaskMonitor when no matching config task exists
+        (e.g. when the overview is built from runtime monitor data).
+        """
+        # First try: MaConfigTask
         result = await db.execute(select(MaConfigTask).where(MaConfigTask.task_code == task_code))
         item = result.scalar_one_or_none()
-        if not item:
+        if item:
+            return await self._apply_task_update(db, item, data)
+
+        # Fallback: update MaTaskMonitor directly (monitor-based overview)
+        # A task_code may appear in multiple months — update all matching records
+        from app.models.monthly import MaTaskMonitor
+        m_result = await db.execute(select(MaTaskMonitor).where(MaTaskMonitor.task_code == task_code))
+        monitor_items = m_result.scalars().all()
+        if not monitor_items:
             return None
-        return await self._apply_task_update(db, item, data)
+        return await self._apply_monitor_update(db, monitor_items, data)
+
+    async def _apply_monitor_update(self, db: AsyncSession, items: list, data: dict) -> Optional[dict]:
+        """Directly update MaTaskMonitor records (fallback path, multiple months)."""
+        if not items:
+            return None
+        now = datetime.now()
+        status = data.get("status")
+        for item in items:
+            if status:
+                item.status = status
+            if status == "completed":
+                if item.actual_end_time is None:
+                    item.actual_end_time = now
+                if item.actual_start_time is None:
+                    item.actual_start_time = now
+                item.progress = 100
+            elif status == "running":
+                if item.actual_start_time is None:
+                    item.actual_start_time = now
+                item.progress = max(item.progress or 0, 50)
+            elif status == "manual_skipped":
+                if item.actual_end_time is None:
+                    item.actual_end_time = now
+                item.progress = 100
+            elif status == "pending":
+                item.progress = 0
+            for key, value in data.items():
+                if value is not None and hasattr(item, key):
+                    setattr(item, key, value)
+        await db.commit()
+        await db.refresh(items[0])
+        return self._monitor_to_dict(items[0])
 
     async def _apply_task_update(self, db: AsyncSession, item: MaConfigTask, data: dict) -> Optional[dict]:
         """Common task update logic shared by update_task and update_task_by_code."""
@@ -299,14 +343,17 @@ class LedgerService:
     # ==================== Ledger Overview ====================
 
     async def get_ledger_overview(self, db: AsyncSession, account_month: Optional[str] = None):
-        """Fetch 4-level ledger hierarchy from ma_task_monitor; fallback to config tables."""
+        """Fetch 4-level ledger hierarchy from MaTaskMonitor.
+        Falls back to config tables (MaConfigStage→Milestone→WorkPlan→Task)
+        when no monitor data exists for the given month.
+        """
 
         # ── Normalise account_month: "202606" → "2026-06" ──
         am = account_month or datetime.now().strftime("%Y-%m")
         if am and len(am) == 6 and '-' not in am:
             am = f"{am[:4]}-{am[4:]}"
 
-        # ── Try runtime data (MaTaskMonitor) ──
+        # ── Try runtime data (MaTaskMonitor) first ──
         from app.models.monthly import MaTaskMonitor
         q = await db.execute(
             select(MaTaskMonitor)
@@ -318,28 +365,29 @@ class LedgerService:
 
         if all_tasks:
             return self._build_overview_from_monitor(all_tasks, am)
-        else:
-            return await self._build_overview_from_config(db, am)
+
+        # ── Fallback to config hierarchy when no runtime data exists ──
+        return await self._build_overview_from_config(db, am)
 
     def _build_overview_from_monitor(self, all_tasks: list, account_month: str) -> dict:
         """Build overview from MaTaskMonitor records (runtime data)."""
         # Group by stage → milestone → plan
         stage_map = {}
         for t in all_tasks:
-            sk = t.stage_code or "unknown"
+            sk = t.stage_code or t.task_type or "unknown"
             if sk not in stage_map:
-                stage_map[sk] = {"stage_id": sk, "name": t.stage_name or sk,
+                stage_map[sk] = {"stage_id": sk, "name": t.stage_name or t.task_type or sk,
                     "sort_order": len(stage_map) + 1, "status": "pending",
                     "progress_pct": 0, "milestones": {}}
-            mk = t.milestone_code or "unknown"
+            mk = t.milestone_code or "milestone"
             if mk not in stage_map[sk]["milestones"]:
                 stage_map[sk]["milestones"][mk] = {"milestone_id": mk,
-                    "name": t.milestone_name or mk, "sort_order": len(stage_map[sk]["milestones"]) + 1,
+                    "name": t.milestone_name or t.stage_name or sk, "sort_order": len(stage_map[sk]["milestones"]) + 1,
                     "status": "pending", "progress_pct": 0, "work_plans": {}}
-            pk = t.plan_code or "unknown"
+            pk = t.plan_code or "plan"
             if pk not in stage_map[sk]["milestones"][mk]["work_plans"]:
                 stage_map[sk]["milestones"][mk]["work_plans"][pk] = {"plan_id": pk,
-                    "name": t.plan_name or pk, "seq_no": len(stage_map[sk]["milestones"][mk]["work_plans"]) + 1,
+                    "name": t.plan_name or t.milestone_name or sk, "seq_no": len(stage_map[sk]["milestones"][mk]["work_plans"]) + 1,
                     "time_point": t.time_point, "status": "pending", "tasks": []}
             stage_map[sk]["milestones"][mk]["work_plans"][pk]["tasks"].append(
                 self._task_to_monitor_dict(t))
@@ -576,12 +624,16 @@ class LedgerService:
 
     @staticmethod
     def _task_to_monitor_dict(t):
+        """Convert MaTaskMonitor ORM row to dict. Status stays in English (前端负责翻译).
+        Falls back content → task_name when content is null (monitor data often lacks content).
+        """
+        content = t.content or t.task_name or ""
         return {
-            "task_id": t.task_code,
-            "task_type": t.task_type,
-            "content": t.content,
-            "sort_order": t.sort_order,
-            "status": t.status,
+            "task_id": t.task_code or str(t.id),
+            "task_type": t.task_type or t.stage_name or "",
+            "content": content,
+            "sort_order": t.sort_order or 0,
+            "status": t.status or "pending",
             "start_time": t.actual_start_time.isoformat() if t.actual_start_time else None,
             "end_time": t.actual_end_time.isoformat() if t.actual_end_time else None,
         }
@@ -722,4 +774,17 @@ class LedgerService:
             "end_time": item.end_time.isoformat() if item.end_time else None,
             "created_at": item.created_at.isoformat() if item.created_at else None,
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        }
+
+    @staticmethod
+    def _monitor_to_dict(item) -> dict:
+        """Convert MaTaskMonitor ORM row to dict (fallback update response)."""
+        return {
+            "id": item.id,
+            "task_code": item.task_code,
+            "task_name": item.task_name,
+            "status": item.status,
+            "progress": item.progress,
+            "actual_start_time": item.actual_start_time.isoformat() if item.actual_start_time else None,
+            "actual_end_time": item.actual_end_time.isoformat() if item.actual_end_time else None,
         }
