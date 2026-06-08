@@ -719,6 +719,7 @@ class LedgerService:
     def _stage_to_dict(item: MaConfigStage):
         return {
             "id": item.id,
+            "stage_id": str(item.id),  # alias for frontend rowKey
             "stage_code": item.stage_code,
             "name": item.name,
             "sort_order": item.sort_order,
@@ -732,7 +733,8 @@ class LedgerService:
     def _milestone_to_dict(item: MaConfigMilestone):
         return {
             "id": item.id,
-            "stage_id": item.stage_id,
+            "milestone_id": str(item.id),  # alias for frontend rowKey (own ID)
+            "stage_id": item.stage_id,  # FK to parent stage
             "milestone_code": item.milestone_code,
             "name": item.name,
             "sort_order": item.sort_order,
@@ -747,7 +749,8 @@ class LedgerService:
     def _work_plan_to_dict(item: MaConfigWorkPlan):
         return {
             "id": item.id,
-            "milestone_id": item.milestone_id,
+            "plan_id": str(item.id),  # alias for frontend rowKey (own ID)
+            "milestone_id": item.milestone_id,  # FK to parent milestone
             "plan_code": item.plan_code,
             "seq_no": item.seq_no,
             "name": item.name,
@@ -764,7 +767,8 @@ class LedgerService:
     def _task_to_dict(item: MaConfigTask):
         return {
             "id": item.id,
-            "plan_id": item.plan_id,
+            "task_id": str(item.id),  # alias for frontend rowKey (own ID)
+            "plan_id": item.plan_id,  # FK to parent work plan
             "task_code": item.task_code,
             "task_type": item.task_type,
             "content": item.content,

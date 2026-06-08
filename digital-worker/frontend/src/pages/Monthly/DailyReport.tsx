@@ -62,9 +62,7 @@ const DailyReportPage: React.FC = () => {
     finally { setGenLoading(false); }
   };
 
-  if (error) return <Alert type="error" message={error} showIcon style={{ margin: 24 }} />;
-
-  const mc = currentReport?.content || {
+  const DEFAULT_CONTENT = {
     summary: '本期出账处理整体运行平稳，共处理应收实收数据XX条，稽核通过率98.5%',
     receivable: { total: 12500, amount: '12,500,000', passRate: '99.2', anomalies: 3 },
     received: { total: 9800, amount: '9,800,000', passRate: '97.8', anomalies: 5 },
@@ -75,6 +73,23 @@ const DailyReportPage: React.FC = () => {
     ],
     conclusion: '建议关注实收稽核异常项，及时跟进处理。整体进度可控。',
   };
+
+  /** Merge partial content with defaults so missing fields don't crash the UI. */
+  const mergeContent = (raw: any) => {
+    if (!raw || typeof raw !== 'object') return DEFAULT_CONTENT;
+    return {
+      ...DEFAULT_CONTENT,
+      ...raw,
+      receivable: { ...DEFAULT_CONTENT.receivable, ...(raw.receivable || {}) },
+      received: { ...DEFAULT_CONTENT.received, ...(raw.received || {}) },
+      audit: { ...DEFAULT_CONTENT.audit, ...(raw.audit || {}) },
+      alerts: Array.isArray(raw.alerts) ? raw.alerts : DEFAULT_CONTENT.alerts,
+    };
+  };
+
+  if (error) return <Alert type="error" message={error} showIcon style={{ margin: 24 }} />;
+
+  const mc = mergeContent(currentReport?.content);
 
   return (
     <div>

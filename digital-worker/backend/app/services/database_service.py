@@ -229,7 +229,11 @@ class DatabaseService:
                 flt.append(MaDailyReport.report_date == rd)
             except ValueError:
                 pass
-        return self._paginate(MaDailyReport, page, page_size, filters=flt or None, order_by=MaDailyReport.report_date.desc())
+        result = self._paginate(MaDailyReport, page, page_size, filters=flt or None, order_by=MaDailyReport.report_date.desc())
+        # Add report_id alias (frontend expects report_id, DB returns id)
+        for item in result["items"]:
+            item["report_id"] = str(item["id"])
+        return result
 
     def get_summary_reports(self, page=1, page_size=20):
         result = self._paginate(MaSummaryReport, page, page_size, order_by=MaSummaryReport.id)
