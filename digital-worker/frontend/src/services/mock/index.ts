@@ -1071,13 +1071,59 @@ function generateChatMessages(sessionId: string) {
 
 // ===== Settings Mock Data =====
 function generateTools() {
-  return list(8, (i) => ({
-    tool_id: `TOOL_${String(i + 1).padStart(4, '0')}`,
-    tool_name: pick(['数据采集器', '清洗引擎', '稽核引擎', '分析引擎', '报表生成器', '告警推送', '数据导出', '调度器']),
-    tool_code: `TOOL_${String(i + 1).padStart(4, '0')}`,
-    description: `用于${pick(['数据采集', '数据清洗', '数据稽核', '数据分析', '报表生成', '告警推送', '数据导出', '任务调度'])}的自动化工具`,
-    status: pick(['active', 'active', 'active', 'inactive']),
-  }));
+  const skills = [
+    // 8.2.1 数据质量稽核
+    { tool_id: '1',  tool_code: 'dq/field/create',     tool_name: '新增稽核指标',     description: '新增数据质量稽核指标字段',         category: '数据质量稽核', method: 'POST', priority: 'P0' },
+    { tool_id: '2',  tool_code: 'dq/field/update',     tool_name: '更新稽核指标',     description: '更新已有稽核指标字段配置',         category: '数据质量稽核', method: 'PUT',  priority: 'P0' },
+    { tool_id: '3',  tool_code: 'dq/field/list',       tool_name: '查询指标列表',     description: '查询所有稽核指标字段列表',         category: '数据质量稽核', method: 'GET',  priority: 'P0' },
+    { tool_id: '4',  tool_code: 'dq/rule/ai-generate', tool_name: 'AI生成稽核规则',   description: 'AI自动生成数据质量稽核规则',     category: '数据质量稽核', method: 'POST', priority: 'P0' },
+    { tool_id: '5',  tool_code: 'dq/rule/confirm',     tool_name: '确认稽核规则',     description: '确认或驳回AI生成的稽核规则',       category: '数据质量稽核', method: 'POST', priority: 'P0' },
+    { tool_id: '6',  tool_code: 'dq/task/create',      tool_name: '创建稽核任务',     description: '创建数据质量稽核执行任务',         category: '数据质量稽核', method: 'POST', priority: 'P0' },
+    { tool_id: '7',  tool_code: 'dq/task/execute',     tool_name: '执行稽核任务',     description: '执行已创建的数据质量稽核任务',     category: '数据质量稽核', method: 'POST', priority: 'P0' },
+    { tool_id: '8',  tool_code: 'dq/alert/config',     tool_name: '配置告警规则',     description: '配置数据质量告警规则和阈值',       category: '数据质量稽核', method: 'POST', priority: 'P1' },
+    { tool_id: '9',  tool_code: 'dq/alert/notify',     tool_name: '发送告警通知',     description: '发送数据质量告警通知消息',         category: '数据质量稽核', method: 'POST', priority: 'P1' },
+    { tool_id: '10', tool_code: 'dq/result/dashboard', tool_name: '获取稽核看板',     description: '获取数据质量稽核结果看板数据',     category: '数据质量稽核', method: 'GET',  priority: 'P1' },
+    { tool_id: '11', tool_code: 'dq/report/generate',  tool_name: '生成稽核报告',     description: '生成数据质量稽核报告文档',         category: '数据质量稽核', method: 'POST', priority: 'P1' },
+    // 8.2.2 根因分析
+    { tool_id: '12', tool_code: 'rca/intent/recognize', tool_name: '识别问题意图',     description: '识别用户问题的根因分析意图类型',   category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '13', tool_code: 'rca/task/trace',       tool_name: '追溯依赖链路',     description: '追溯任务的上游依赖链路和阻塞点',   category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '14', tool_code: 'rca/task/analyze',     tool_name: '分析任务异常',     description: '分析任务的异常原因和错误类型',     category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '15', tool_code: 'rca/file/check',       tool_name: '检查文件状态',     description: '检查数据文件的到达状态和完整性',   category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '16', tool_code: 'rca/metric/analyze',   tool_name: '分析指标波动',     description: '分析业务指标的异常波动和多维下钻', category: '根因分析', method: 'POST', priority: 'P1' },
+    { tool_id: '17', tool_code: 'rca/case/match',       tool_name: '匹配历史案例',     description: '根据问题描述匹配相似的历史根因案例', category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '18', tool_code: 'rca/case/deposit',     tool_name: '沉淀案例',         description: '将分析结果沉淀为案例入库',         category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '19', tool_code: 'rca/report/generate',  tool_name: '生成分析报告',     description: '生成结构化的根因分析报告',         category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '20', tool_code: 'rca/report/push',      tool_name: '推送分析报告',     description: '将分析报告推送到指定渠道',         category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '21', tool_code: 'rca/history/list',     tool_name: '查询分析历史',     description: '查询历史根因分析记录列表',         category: '根因分析', method: 'GET',  priority: 'P1' },
+    { tool_id: '22', tool_code: 'rca/feedback/submit',  tool_name: '提交用户反馈',     description: '提交用户对分析结果的反馈评价',     category: '根因分析', method: 'POST', priority: 'P1' },
+    { tool_id: '23', tool_code: 'ops/lineage/query',    tool_name: '查询数据血缘',     description: '查询任务/表之间的血缘依赖关系',     category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '24', tool_code: 'ops/alert/query',      tool_name: '查询告警信息',     description: '查询系统告警信息和告警详情',       category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '25', tool_code: 'ops/task/status',      tool_name: '查询任务状态',     description: '查询数据运维任务的当前状态',       category: '根因分析', method: 'POST', priority: 'P0' },
+    { tool_id: '26', tool_code: 'ops/task/logs',        tool_name: '获取任务日志',     description: '获取任务的执行日志详情',           category: '根因分析', method: 'POST', priority: 'P0' },
+    // 8.2.3 月账数字员工
+    { tool_id: '27', tool_code: 'ma/monitor/progress',  tool_name: '获取月账进度',     description: '获取月账处理整体进度',             category: '月账数字员工', method: 'GET',  priority: 'P0' },
+    { tool_id: '28', tool_code: 'ma/monitor/tasks',     tool_name: '获取任务列表',     description: '获取月账处理任务列表',             category: '月账数字员工', method: 'GET',  priority: 'P0' },
+    { tool_id: '29', tool_code: 'ma/audit/revenue',     tool_name: '执行收入稽核',     description: '执行月账收入数据稽核',             category: '月账数字员工', method: 'POST', priority: 'P0' },
+    { tool_id: '30', tool_code: 'ma/audit/user',        tool_name: '执行用户稽核',     description: '执行月账用户数据稽核',             category: '月账数字员工', method: 'POST', priority: 'P0' },
+    { tool_id: '31', tool_code: 'ma/audit/balance',     tool_name: '执行平衡稽核',     description: '执行月账借贷平衡稽核',             category: '月账数字员工', method: 'POST', priority: 'P0' },
+    { tool_id: '32', tool_code: 'ma/adjustment/auto',   tool_name: '自动调账',         description: '自动执行差异调账操作',             category: '月账数字员工', method: 'POST', priority: 'P1' },
+    { tool_id: '33', tool_code: 'ma/adjustment/approve', tool_name: '调账审批',       description: '审批调账申请单',                   category: '月账数字员工', method: 'POST', priority: 'P1' },
+    { tool_id: '34', tool_code: 'ma/report/daily',       tool_name: '生成日报',       description: '生成月账处理日报',                 category: '月账数字员工', method: 'POST', priority: 'P1' },
+    { tool_id: '35', tool_code: 'ma/report/summary',     tool_name: '生成总结报告',   description: '生成月账处理总结报告',             category: '月账数字员工', method: 'POST', priority: 'P1' },
+    { tool_id: '36', tool_code: 'ma/kpi/calculate',      tool_name: '计算KPI指标',   description: '计算月账处理KPI指标数据',          category: '月账数字员工', method: 'POST', priority: 'P1' },
+    // 8.2.4 外部系统集成
+    { tool_id: '37', tool_code: 'tdp/task/status',       tool_name: 'TDP任务状态查询', description: '查询TDP调度平台任务状态',          category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '38', tool_code: 'tdp/task/rerun',        tool_name: 'TDP任务重跑',     description: '触发TDP调度平台任务重跑',          category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '39', tool_code: 'tdp/task/dependencies', tool_name: 'TDP依赖查询',     description: '查询TDP任务依赖关系',              category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '40', tool_code: 'dpaas/metadata/query',  tool_name: 'DPAAS元数据查询', description: '查询DPAAS系统元数据信息',           category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '41', tool_code: 'dpaas/lineage/query',   tool_name: 'DPAAS血缘查询',   description: '查询DPAAS系统数据血缘关系',        category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '42', tool_code: 'dpaas/model/info',      tool_name: 'DPAAS模型信息',   description: '查询DPAAS系统模型信息',            category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '43', tool_code: 'aiops/alert/query',     tool_name: '智能运维告警',     description: '查询智能运维平台告警信息',         category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '44', tool_code: 'aiops/performance/query', tool_name: '性能指标查询',   description: '查询智能运维平台性能指标',         category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '45', tool_code: 'qiming/message/push',     tool_name: '启明消息推送',   description: '向启明APP推送消息通知',           category: '外部系统集成', method: 'POST', priority: 'P0' },
+    { tool_id: '46', tool_code: 'qiming/feedback/receive', tool_name: '启明反馈接收', description: '接收启明APP用户反馈',               category: '外部系统集成', method: 'POST', priority: 'P0' },
+  ];
+  return skills.map((s) => ({ ...s, status: 'active' }));
 }
 
 function generatePrompts() {

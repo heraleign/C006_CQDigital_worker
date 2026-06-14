@@ -227,7 +227,11 @@ export interface ToolItem {
   tool_name: string;
   tool_code: string;
   description: string;
+  category?: string;
+  method?: string;
+  priority?: string;
   status: string;
+  hermes_registered?: boolean;
 }
 
 export interface PromptTemplate {

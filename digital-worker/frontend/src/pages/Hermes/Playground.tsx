@@ -13,12 +13,45 @@ import { hermesApi } from '@/services/hermes';
 const { TextArea } = Input;
 const { Text, Title } = Typography;
 
+const SESSION_KEY = 'hermes_playground_session';
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+}
+
+/** Load session from sessionStorage, handling Date deserialization. */
+function loadSession(): { messages: ChatMessage[]; inputValue: string; healthStatus: 'unknown' | 'ok' | 'error' } {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return { messages: [], inputValue: '', healthStatus: 'unknown' };
+    const saved = JSON.parse(raw);
+    return {
+      messages: (saved.messages || []).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })),
+      inputValue: saved.inputValue || '',
+      healthStatus: saved.healthStatus || 'unknown',
+    };
+  } catch {
+    return { messages: [], inputValue: '', healthStatus: 'unknown' };
+  }
+}
+
+/** Save session to sessionStorage. */
+function saveSession(
+  messages: ChatMessage[],
+  inputValue: string,
+  healthStatus: string,
+) {
+  try {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      messages: messages.map(({ id, role, content, timestamp }) => ({ id, role, content, timestamp })),
+      inputValue,
+      healthStatus,
+    }));
+  } catch { /* quota exceeded or private mode */ }
 }
 
 const presetQuestions = [
@@ -43,12 +76,28 @@ const demoRootCausePresets = [
 ];
 
 const Playground: React.FC = () => {
+  // ── Restore session on mount ─────────────────────────────────
+  const [sessionRestored, setSessionRestored] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [sending, setSending] = useState(false);
   const [healthStatus, setHealthStatus] = useState<'unknown' | 'ok' | 'error'>('unknown');
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const saved = loadSession();
+    setMessages(saved.messages);
+    setInputValue(saved.inputValue);
+    setHealthStatus(saved.healthStatus);
+    setSessionRestored(true);
+  }, []);
+
+  // ── Save session on state change ─────────────────────────────
+  useEffect(() => {
+    if (!sessionRestored) return;
+    saveSession(messages, inputValue, healthStatus);
+  }, [messages, inputValue, healthStatus, sessionRestored]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -186,6 +235,9 @@ const Playground: React.FC = () => {
 
   const handleClear = () => {
     setMessages([]);
+    setInputValue('');
+    sessionStorage.removeItem(SESSION_KEY);
+    message.success('会话已清空');
   };
 
   return (

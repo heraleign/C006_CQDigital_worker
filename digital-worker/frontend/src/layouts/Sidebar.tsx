@@ -80,7 +80,7 @@ const menuItems = [
     icon: <SettingOutlined />,
     label: '系统设置',
     children: [
-      { key: '/settings/tools', icon: <ToolOutlined />, label: '工具注册' },
+      { key: '/settings/tools', icon: <ToolOutlined />, label: '技能管理' },
       { key: '/settings/prompts', icon: <CodeOutlined />, label: 'Prompt管理' },
       { key: '/settings/knowledge-base', icon: <BookOutlined />, label: '知识库' },
       { key: '/settings/notifications', icon: <BellOutlined />, label: '通知配置' },

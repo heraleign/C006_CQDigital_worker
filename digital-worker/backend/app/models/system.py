@@ -166,6 +166,23 @@ class SysDataDict(Base):
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 
 
+class SysToolConfig(Base):
+    """工具/技能配置"""
+    __tablename__ = "sys_tool_config"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tool_code = Column(String(100), nullable=False, comment="技能编码，如 dq/field/list")
+    tool_name = Column(String(200), nullable=False, comment="技能名称")
+    description = Column(Text, comment="描述")
+    category = Column(String(50), comment="分类: 数据质量稽核/根因分析/月账数字员工/外部系统集成")
+    method = Column(String(10), comment="HTTP方法: GET/POST/PUT/DELETE")
+    priority = Column(String(10), comment="优先级: P0/P1/P2")
+    status = Column(String(20), default="active", comment="状态: active/inactive")
+    hermes_registered = Column(Boolean, default=False, comment="是否已注册到Hermes Agent")
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+
+
 class SysNotificationRecord(Base):
     """通知记录"""
     __tablename__ = "sys_notification_record"

@@ -51,6 +51,10 @@ PYTHONPATH=. python -m app.seeds.seed_reports       # 仅报表发布 2 张表
 # 数据质量稽核专用种子（8 张 dq_* 表，20+15+8+5+5+25+40+5 条数据）
 PYTHONPATH=. python scripts/seed_audit_data.py
 ```
+### 技能的种子数据
+cd digital-worker/backend
+# 激活虚拟环境后
+alembic upgrade 003
 
 ### 前端
 

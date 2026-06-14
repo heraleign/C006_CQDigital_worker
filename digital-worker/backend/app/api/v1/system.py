@@ -33,28 +33,25 @@ async def list_tools(
 @router.post("/tools")
 async def create_tool(config: dict):
     """Create tool configuration."""
-    tools = mock.get_tool_configs(page=1, page_size=200)["items"]
-    new_item = mock.create_item(tools, config)
-    return success_response(data=new_item, message="工具配置创建成功")
+    new_item = mock.create_tool(config)
+    return success_response(data=new_item, message="技能创建成功")
 
 
 @router.put("/tools/{tool_id}")
 async def update_tool(tool_id: str, config: dict):
     """Update tool configuration."""
-    tools = mock.get_tool_configs(page=1, page_size=200)["items"]
-    data = mock.update_item(tools, tool_id, config)
+    data = mock.update_tool(tool_id, config)
     if not data:
-        raise HTTPException(status_code=404, detail="工具配置不存在")
+        raise HTTPException(status_code=404, detail="技能不存在")
     return success_response(data=data, message="更新成功")
 
 
 @router.delete("/tools/{tool_id}")
 async def delete_tool(tool_id: str):
     """Delete tool configuration."""
-    tools = mock.get_tool_configs(page=1, page_size=200)["items"]
-    data = mock.delete_item(tools, tool_id)
+    data = mock.delete_tool(tool_id)
     if not data:
-        raise HTTPException(status_code=404, detail="工具配置不存在")
+        raise HTTPException(status_code=404, detail="技能不存在")
     return success_response(data=data, message="删除成功")
 
 

@@ -77,7 +77,7 @@ const Analysis: React.FC = () => {
     setHermesMode(false);
 
     try {
-      // ── Hermes Agent mode ──────────────────────────────────────
+      // ── Hermes Agent mode (async) ─────────────────────────────
       if (isPreset && presetKey === 'hermes_agent') {
         const tid = hermesTaskId || problemDesc.trim();
         if (!tid) { message.warning('请输入任务ID或问题描述'); setAnalyzing(false); return; }
@@ -86,25 +86,39 @@ const Analysis: React.FC = () => {
         setPresetMode(false);
         setHermesMode(true);
 
-        const payload = {
+        // Submit async
+        const submitRes = await hermesApi.analyzeRootCause({
           task_id: tid,
           problem_description: problemDesc,
           acct_month: acctMonth || undefined,
-        };
-        const res = await hermesApi.analyzeRootCause(payload);
-        const logs = res.data?.analysis_logs || [];
+        });
+        const asyncTaskId = submitRes.data?.task_id;
+        if (!asyncTaskId) { message.error('提交分析任务失败'); setAnalyzing(false); return; }
 
-        // Step through logs one by one
-        setAnalysisLogs(logs);
-        for (let i = 0; i < logs.length; i++) {
-          setCurrentStep(i);
-          setActiveLogStep(i);
-          await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+        // Poll until completed or failed
+        let done = false;
+        while (!done) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const statusRes = await hermesApi.getAnalysisStatus(asyncTaskId);
+          const st = statusRes.data || {};
+          if (st.status === 'completed' && st.result) {
+            const logs = st.result.analysis_logs || [];
+            setAnalysisLogs(logs);
+            for (let i = 0; i < logs.length; i++) {
+              setCurrentStep(i);
+              setActiveLogStep(i);
+              await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+            }
+            setCurrentStep(logs.length);
+            setActiveLogStep(null);
+            setAnalysisResult(st.result);
+            done = true;
+          } else if (st.status === 'failed') {
+            setError(st.error || 'Hermes 分析失败');
+            done = true;
+          }
+          // else still "processing" — keep polling
         }
-        setCurrentStep(logs.length);
-        setActiveLogStep(null);
-
-        setAnalysisResult(res.data);
         setAnalyzing(false);
         return;
       }
@@ -411,17 +425,32 @@ const Analysis: React.FC = () => {
                         problem_description: problemDesc,
                         acct_month: acctMonth || undefined,
                       };
-                      const res = await hermesApi.analyzeRootCause(payload);
-                      const logs = res.data?.analysis_logs || [];
-                      setAnalysisLogs(logs);
-                      for (let i = 0; i < logs.length; i++) {
-                        setCurrentStep(i);
-                        setActiveLogStep(i);
-                        await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+                      const submitRes = await hermesApi.analyzeRootCause(payload);
+                      const asyncTaskId = submitRes.data?.task_id;
+                      if (!asyncTaskId) { message.error('提交分析任务失败'); return; }
+
+                      let done = false;
+                      while (!done) {
+                        await new Promise((r) => setTimeout(r, 2000));
+                        const statusRes = await hermesApi.getAnalysisStatus(asyncTaskId);
+                        const st = statusRes.data || {};
+                        if (st.status === 'completed' && st.result) {
+                          const logs = st.result.analysis_logs || [];
+                          setAnalysisLogs(logs);
+                          for (let i = 0; i < logs.length; i++) {
+                            setCurrentStep(i);
+                            setActiveLogStep(i);
+                            await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+                          }
+                          setCurrentStep(logs.length);
+                          setActiveLogStep(null);
+                          setAnalysisResult(st.result);
+                          done = true;
+                        } else if (st.status === 'failed') {
+                          setError(st.error || 'Hermes分析失败');
+                          done = true;
+                        }
                       }
-                      setCurrentStep(logs.length);
-                      setActiveLogStep(null);
-                      setAnalysisResult(res.data);
                     } catch (err: any) {
                       setError(err?.message || 'Hermes分析失败');
                     } finally {

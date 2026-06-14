@@ -28,7 +28,7 @@ from app.models.root_cause import (
 from app.models.system import (
     SysUser, SysRole, SysUserRole, SysPermission,
     SysRolePermission, SysDepartment, SysAuditLog,
-    SysConfig, SysDataDict, SysNotificationRecord,
+    SysConfig, SysDataDict, SysNotificationRecord, SysToolConfig,
 )
 from app.models.assistant import (
     AiChatSession, AiChatMessage, SysAiConfig,
@@ -367,17 +367,118 @@ class DatabaseService:
     def get_notifications(self, page=1, page_size=20):
         return self._paginate(SysNotificationRecord, page, page_size, order_by=SysNotificationRecord.id)
 
+    def _tool_to_dict(self, tool: SysToolConfig) -> dict:
+        return {
+            "tool_id": str(tool.id),
+            "tool_code": tool.tool_code,
+            "tool_name": tool.tool_name,
+            "description": tool.description or "",
+            "category": tool.category or "",
+            "method": tool.method or "",
+            "priority": tool.priority or "",
+            "status": tool.status or "active",
+            "hermes_registered": bool(tool.hermes_registered),
+        }
+
     def get_tool_configs(self, page=1, page_size=20):
-        tools = []
-        for i in range(10):
-            tools.append({
-                "tool_id": str(i + 1),
-                "tool_name": f"工具_{i+1}",
-                "tool_code": f"TOOL_{i+1:04d}",
-                "description": f"工具_{i+1}的配置描述",
-                "status": "active",
-            })
-        return self.paginate(tools, page, page_size)
+        session = self._get_session()
+        try:
+            total = session.execute(select(func.count()).select_from(SysToolConfig)).scalar() or 0
+            q = select(SysToolConfig).order_by(SysToolConfig.id).offset((page - 1) * page_size).limit(page_size)
+            items = [self._tool_to_dict(r) for r in session.execute(q).scalars().all()]
+            return self.paginate(items, page, page_size, total=total)
+        finally:
+            session.close()
+
+    def create_tool(self, data: dict) -> dict:
+        session = self._get_session()
+        try:
+            tool = SysToolConfig(
+                tool_code=data.get("tool_code", ""),
+                tool_name=data.get("tool_name", ""),
+                description=data.get("description", ""),
+                category=data.get("category", ""),
+                method=data.get("method", ""),
+                priority=data.get("priority", ""),
+                status=data.get("status", "active"),
+            )
+            session.add(tool)
+            session.commit()
+            session.refresh(tool)
+            return self._tool_to_dict(tool)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def update_tool(self, tool_id: str, data: dict) -> dict | None:
+        session = self._get_session()
+        try:
+            tool = session.execute(select(SysToolConfig).where(SysToolConfig.id == int(tool_id))).scalar_one_or_none()
+            if not tool:
+                return None
+            for field in ("tool_code", "tool_name", "description", "category", "method", "priority", "status"):
+                if field in data:
+                    setattr(tool, field, data[field])
+            session.commit()
+            session.refresh(tool)
+            return self._tool_to_dict(tool)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def delete_tool(self, tool_id: str) -> dict | None:
+        session = self._get_session()
+        try:
+            tool = session.execute(select(SysToolConfig).where(SysToolConfig.id == int(tool_id))).scalar_one_or_none()
+            if not tool:
+                return None
+            d = self._tool_to_dict(tool)
+            session.delete(tool)
+            session.commit()
+            return d
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def mark_tool_registered(self, tool_code: str) -> dict | None:
+        """Mark a tool as registered to Hermes Agent."""
+        session = self._get_session()
+        try:
+            tool = session.execute(select(SysToolConfig).where(SysToolConfig.tool_code == tool_code)).scalar_one_or_none()
+            if not tool:
+                return None
+            tool.hermes_registered = True
+            session.commit()
+            session.refresh(tool)
+            return self._tool_to_dict(tool)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def mark_tool_unregistered(self, tool_code: str) -> dict | None:
+        """Mark a tool as unregistered from Hermes Agent."""
+        session = self._get_session()
+        try:
+            tool = session.execute(select(SysToolConfig).where(SysToolConfig.tool_code == tool_code)).scalar_one_or_none()
+            if not tool:
+                return None
+            tool.hermes_registered = False
+            session.commit()
+            session.refresh(tool)
+            return self._tool_to_dict(tool)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def get_prompt_configs(self, page=1, page_size=20):
         prompts = []

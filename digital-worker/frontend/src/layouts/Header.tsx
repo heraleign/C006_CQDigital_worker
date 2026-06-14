@@ -25,7 +25,7 @@ const breadcrumbMap: Record<string, string> = {
   '/monthly/daily-report': '出账日报',
   '/monthly/ledger-display': '月账进度',
   '/monthly/report-publish': '报表发布',
-  '/settings/tools': '工具注册',
+  '/settings/tools': '技能管理',
   '/settings/prompts': 'Prompt管理',
   '/settings/knowledge-base': '知识库',
   '/settings/notifications': '通知配置',

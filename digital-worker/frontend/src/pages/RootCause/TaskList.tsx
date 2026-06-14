@@ -137,22 +137,35 @@ const TaskList: React.FC = () => {
       : `${task.task_name}（${task.task_id}）状态为${statusConfig[task.status]?.label || task.status}，疑似延迟`;
 
     try {
-      const res = await hermesApi.analyzeRootCause({
+      const submitRes = await hermesApi.analyzeRootCause({
         task_id: task.task_id,
         problem_description: desc,
         acct_month: dayjs().format('YYYYMM'),
       });
+      const asyncTaskId = submitRes.data?.task_id;
+      if (!asyncTaskId) { message.error('提交分析任务失败'); setHermesLoading(false); return; }
 
-      const logs = res.data?.analysis_logs || [];
-      setHermesLogs(logs);
-
-      for (let i = 0; i < logs.length; i++) {
-        setHermesStep(i);
-        await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+      // Poll until completed
+      let done = false;
+      while (!done) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const statusRes = await hermesApi.getAnalysisStatus(asyncTaskId);
+        const st = statusRes.data || {};
+        if (st.status === 'completed' && st.result) {
+          const logs = st.result.analysis_logs || [];
+          setHermesLogs(logs);
+          for (let i = 0; i < logs.length; i++) {
+            setHermesStep(i);
+            await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+          }
+          setHermesStep(logs.length);
+          setHermesResult(st.result);
+          done = true;
+        } else if (st.status === 'failed') {
+          message.error(st.error || 'Hermes分析失败');
+          done = true;
+        }
       }
-
-      setHermesStep(logs.length);
-      setHermesResult(res.data);
     } catch (err: any) {
       message.error(err?.message || 'Hermes分析失败');
     } finally {

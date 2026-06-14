@@ -1029,16 +1029,105 @@ class MockDataService:
         return self.paginate(jobs, page, page_size)
 
     def get_tool_configs(self, page=1, page_size=20):
-        tools = []
-        for i in range(10):
-            tools.append({
-                "tool_id": str(i + 1),
-                "tool_name": f"工具_{i+1}",
-                "tool_code": f"TOOL_{i+1:04d}",
-                "description": f"工具_{i+1}的配置描述",
-                "status": "active",
-            })
-        return self.paginate(tools, page, page_size)
+        """All skills defined in the product spec (sections 8.2.1-8.2.4)."""
+        # Cache on first call so CRUD edits persist within the session
+        if not hasattr(self, '_tools_cache') or self._tools_cache is None:
+            self._tools_cache = self._build_tools_list()
+        return self.paginate(self._tools_cache, page, page_size)
+
+    def _build_tools_list(self):
+        """Build the full skills list (cached by get_tool_configs)."""
+        return [
+            {"tool_id": "1", "tool_code": "dq/field/create", "tool_name": "新增稽核指标", "description": "新增数据质量稽核指标字段", "category": "数据质量稽核", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "2", "tool_code": "dq/field/update", "tool_name": "更新稽核指标", "description": "更新已有稽核指标字段配置", "category": "数据质量稽核", "method": "PUT", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "3", "tool_code": "dq/field/list", "tool_name": "查询指标列表", "description": "查询所有稽核指标字段列表", "category": "数据质量稽核", "method": "GET", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "4", "tool_code": "dq/rule/ai-generate", "tool_name": "AI生成稽核规则", "description": "AI自动生成数据质量稽核规则", "category": "数据质量稽核", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "5", "tool_code": "dq/rule/confirm", "tool_name": "确认稽核规则", "description": "确认或驳回AI生成的稽核规则", "category": "数据质量稽核", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "6", "tool_code": "dq/task/create", "tool_name": "创建稽核任务", "description": "创建数据质量稽核执行任务", "category": "数据质量稽核", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "7", "tool_code": "dq/task/execute", "tool_name": "执行稽核任务", "description": "执行已创建的数据质量稽核任务", "category": "数据质量稽核", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "8", "tool_code": "dq/alert/config", "tool_name": "配置告警规则", "description": "配置数据质量告警规则和阈值", "category": "数据质量稽核", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "9", "tool_code": "dq/alert/notify", "tool_name": "发送告警通知", "description": "发送数据质量告警通知消息", "category": "数据质量稽核", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "10", "tool_code": "dq/result/dashboard", "tool_name": "获取稽核看板", "description": "获取数据质量稽核结果看板数据", "category": "数据质量稽核", "method": "GET", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "11", "tool_code": "dq/report/generate", "tool_name": "生成稽核报告", "description": "生成数据质量稽核报告文档", "category": "数据质量稽核", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "12", "tool_code": "rca/intent/recognize", "tool_name": "识别问题意图", "description": "识别用户问题的根因分析意图类型", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "13", "tool_code": "rca/task/trace", "tool_name": "追溯依赖链路", "description": "追溯任务的上游依赖链路和阻塞点", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "14", "tool_code": "rca/task/analyze", "tool_name": "分析任务异常", "description": "分析任务的异常原因和错误类型", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "15", "tool_code": "rca/file/check", "tool_name": "检查文件状态", "description": "检查数据文件的到达状态和完整性", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "16", "tool_code": "rca/metric/analyze", "tool_name": "分析指标波动", "description": "分析业务指标的异常波动和多维下钻", "category": "根因分析", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "17", "tool_code": "rca/case/match", "tool_name": "匹配历史案例", "description": "根据问题描述匹配相似的历史根因案例", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "18", "tool_code": "rca/case/deposit", "tool_name": "沉淀案例", "description": "将分析结果沉淀为案例入库", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "19", "tool_code": "rca/report/generate", "tool_name": "生成分析报告", "description": "生成结构化的根因分析报告", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "20", "tool_code": "rca/report/push", "tool_name": "推送分析报告", "description": "将分析报告推送到指定渠道", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "21", "tool_code": "rca/history/list", "tool_name": "查询分析历史", "description": "查询历史根因分析记录列表", "category": "根因分析", "method": "GET", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "22", "tool_code": "rca/feedback/submit", "tool_name": "提交用户反馈", "description": "提交用户对分析结果的反馈评价", "category": "根因分析", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "23", "tool_code": "ops/lineage/query", "tool_name": "查询数据血缘", "description": "查询任务/表之间的血缘依赖关系", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "24", "tool_code": "ops/alert/query", "tool_name": "查询告警信息", "description": "查询系统告警信息和告警详情", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "25", "tool_code": "ops/task/status", "tool_name": "查询任务状态", "description": "查询数据运维任务的当前状态", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "26", "tool_code": "ops/task/logs", "tool_name": "获取任务日志", "description": "获取任务的执行日志详情", "category": "根因分析", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "27", "tool_code": "ma/monitor/progress", "tool_name": "获取月账进度", "description": "获取月账处理整体进度", "category": "月账数字员工", "method": "GET", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "28", "tool_code": "ma/monitor/tasks", "tool_name": "获取任务列表", "description": "获取月账处理任务列表", "category": "月账数字员工", "method": "GET", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "29", "tool_code": "ma/audit/revenue", "tool_name": "执行收入稽核", "description": "执行月账收入数据稽核", "category": "月账数字员工", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "30", "tool_code": "ma/audit/user", "tool_name": "执行用户稽核", "description": "执行月账用户数据稽核", "category": "月账数字员工", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "31", "tool_code": "ma/audit/balance", "tool_name": "执行平衡稽核", "description": "执行月账借贷平衡稽核", "category": "月账数字员工", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "32", "tool_code": "ma/adjustment/auto", "tool_name": "自动调账", "description": "自动执行差异调账操作", "category": "月账数字员工", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "33", "tool_code": "ma/adjustment/approve", "tool_name": "调账审批", "description": "审批调账申请单", "category": "月账数字员工", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "34", "tool_code": "ma/report/daily", "tool_name": "生成日报", "description": "生成月账处理日报", "category": "月账数字员工", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "35", "tool_code": "ma/report/summary", "tool_name": "生成总结报告", "description": "生成月账处理总结报告", "category": "月账数字员工", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "36", "tool_code": "ma/kpi/calculate", "tool_name": "计算KPI指标", "description": "计算月账处理KPI指标数据", "category": "月账数字员工", "method": "POST", "priority": "P1", "status": "active", "hermes_registered": False},
+            {"tool_id": "37", "tool_code": "tdp/task/status", "tool_name": "TDP任务状态查询", "description": "查询TDP调度平台任务状态", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "38", "tool_code": "tdp/task/rerun", "tool_name": "TDP任务重跑", "description": "触发TDP调度平台任务重跑", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "39", "tool_code": "tdp/task/dependencies", "tool_name": "TDP依赖查询", "description": "查询TDP任务依赖关系", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "40", "tool_code": "dpaas/metadata/query", "tool_name": "DPAAS元数据查询", "description": "查询DPAAS系统元数据信息", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "41", "tool_code": "dpaas/lineage/query", "tool_name": "DPAAS血缘查询", "description": "查询DPAAS系统数据血缘关系", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "42", "tool_code": "dpaas/model/info", "tool_name": "DPAAS模型信息", "description": "查询DPAAS系统模型信息", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "43", "tool_code": "aiops/alert/query", "tool_name": "智能运维告警", "description": "查询智能运维平台告警信息", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "44", "tool_code": "aiops/performance/query", "tool_name": "性能指标查询", "description": "查询智能运维平台性能指标", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "45", "tool_code": "qiming/message/push", "tool_name": "启明消息推送", "description": "向启明APP推送消息通知", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+            {"tool_id": "46", "tool_code": "qiming/feedback/receive", "tool_name": "启明反馈接收", "description": "接收启明APP用户反馈", "category": "外部系统集成", "method": "POST", "priority": "P0", "status": "active", "hermes_registered": False},
+        ]
+
+    def create_tool(self, data: dict) -> dict:
+        """Create a new tool in the cached list."""
+        tools = self.get_tool_configs(page=1, page_size=200)["items"]
+        new_id = str(max((int(t["tool_id"]) for t in tools), default=0) + 1)
+        new_item = {"tool_id": new_id, **data, "status": data.get("status", "active")}
+        tools.append(new_item)
+        return new_item
+
+    def update_tool(self, tool_id: str, data: dict) -> dict | None:
+        """Update a tool in the cached list."""
+        tools = self.get_tool_configs(page=1, page_size=200)["items"]
+        for item in tools:
+            if item["tool_id"] == tool_id:
+                item.update({k: v for k, v in data.items() if v is not None})
+                return item
+        return None
+
+    def delete_tool(self, tool_id: str) -> dict | None:
+        """Delete a tool from the cached list."""
+        tools = self.get_tool_configs(page=1, page_size=200)["items"]
+        for i, item in enumerate(tools):
+            if item["tool_id"] == tool_id:
+                return tools.pop(i)
+        return None
+
+    def mark_tool_registered(self, tool_code: str) -> dict | None:
+        """Mark a tool as registered to Hermes Agent in cached list."""
+        tools = self.get_tool_configs(page=1, page_size=200)["items"]
+        for item in tools:
+            if item["tool_code"] == tool_code:
+                item["hermes_registered"] = True
+                return item
+        return None
+
+    def mark_tool_unregistered(self, tool_code: str) -> dict | None:
+        """Mark a tool as unregistered from Hermes Agent in cached list."""
+        tools = self.get_tool_configs(page=1, page_size=200)["items"]
+        for item in tools:
+            if item["tool_code"] == tool_code:
+                item["hermes_registered"] = False
+                return item
+        return None
 
     def get_prompt_configs(self, page=1, page_size=20):
         prompts = []
@@ -1183,7 +1272,7 @@ class MockDataService:
             {"cycle_id": "202602", "cycle_name": "2026年2月账期", "start_date": "2026-02-25", "end_date": "2026-02-28", "status": "closed"},
             {"cycle_id": "202603", "cycle_name": "2026年3月账期", "start_date": "2026-03-28", "end_date": "2026-03-31", "status": "closed"},
             {"cycle_id": "202604", "cycle_name": "2026年4月账期", "start_date": "2026-04-26", "end_date": "2026-04-30", "status": "closed"},
-            {"cycle_id": "202605", "cycle_name": "2026年5月账期", "start_date": "2026-05-27", "end_date": "2026-05-30", "status": "active"},
+            {"cycle_id": "202605", "cycle_name": "2026年5月账期", "start_date": "2026-05-27", "end_date": "2026-05-30", "status": "active", "hermes_registered": False},
         ]
 
     def _build_billing_tasks(self, cycle_id):
