@@ -3,10 +3,11 @@ import { Card, Table, Button, Select, Tag, Space, Spin, Alert, Empty, Typography
 import {
   BugOutlined, RobotOutlined, SearchOutlined, ReloadOutlined,
   CheckCircleFilled, CloseCircleFilled, ClockCircleFilled,
-  MinusCircleFilled, LoadingOutlined,
+  MinusCircleFilled, LoadingOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { rootCauseApi } from '@/services/rootCause';
+import { hermesApi } from '@/services/hermes';
 import { useAssistantStore } from '@/stores/useAssistantStore';
 
 const { Title, Text } = Typography;
@@ -34,6 +35,14 @@ const TaskList: React.FC = () => {
   const [diagnoseLogs, setDiagnoseLogs] = useState<any[]>([]);
   const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
   const [diagnosingModalLoading, setDiagnosingModalLoading] = useState(false);
+
+  // Hermes diagnosis state
+  const [showHermesModal, setShowHermesModal] = useState(false);
+  const [hermesTask, setHermesTask] = useState<any>(null);
+  const [hermesStep, setHermesStep] = useState(-1);
+  const [hermesLogs, setHermesLogs] = useState<any[]>([]);
+  const [hermesResult, setHermesResult] = useState<any>(null);
+  const [hermesLoading, setHermesLoading] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -115,6 +124,50 @@ const TaskList: React.FC = () => {
     setDiagnoseResult(null);
   };
 
+  const handleHermesDiagnose = async (task: any) => {
+    setHermesTask(task);
+    setShowHermesModal(true);
+    setHermesStep(0);
+    setHermesLogs([]);
+    setHermesResult(null);
+    setHermesLoading(true);
+
+    const desc = task.status === 'failed'
+      ? `${task.task_name}（${task.task_id}）执行失败`
+      : `${task.task_name}（${task.task_id}）状态为${statusConfig[task.status]?.label || task.status}，疑似延迟`;
+
+    try {
+      const res = await hermesApi.analyzeRootCause({
+        task_id: task.task_id,
+        problem_description: desc,
+        acct_month: dayjs().format('YYYYMM'),
+      });
+
+      const logs = res.data?.analysis_logs || [];
+      setHermesLogs(logs);
+
+      for (let i = 0; i < logs.length; i++) {
+        setHermesStep(i);
+        await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+      }
+
+      setHermesStep(logs.length);
+      setHermesResult(res.data);
+    } catch (err: any) {
+      message.error(err?.message || 'Hermes分析失败');
+    } finally {
+      setHermesLoading(false);
+    }
+  };
+
+  const handleCloseHermesModal = () => {
+    setShowHermesModal(false);
+    setHermesTask(null);
+    setHermesStep(-1);
+    setHermesLogs([]);
+    setHermesResult(null);
+  };
+
   if (error) return <Alert type="error" message={error} showIcon style={{ margin: 24 }} />;
 
   const columns = [
@@ -174,18 +227,46 @@ const TaskList: React.FC = () => {
       render: (_: any, record: any) => {
         const isAbnormal = record.status === 'failed' || record.status === 'delayed' || record.status === 'waiting';
         return (
-          <Tooltip title={isAbnormal ? '分析任务延迟/失败原因' : '通过AI助手查询依赖与影响'}>
-            <Button
-              type={isAbnormal ? 'primary' : 'default'}
-              size="small"
-              danger={isAbnormal}
-              icon={isAbnormal ? <BugOutlined /> : <RobotOutlined />}
-              loading={showDiagnoseModal && diagnoseTask?.task_id === record.task_id}
-              onClick={() => handleDiagnose(record)}
-            >
-              {isAbnormal ? '根因诊断' : 'AI咨询'}
-            </Button>
-          </Tooltip>
+          <Space size="small">
+            {isAbnormal ? (
+              <>
+                <Tooltip title="分析任务延迟/失败原因">
+                  <Button
+                    type="primary"
+                    size="small"
+                    danger
+                    icon={<BugOutlined />}
+                    loading={showDiagnoseModal && diagnoseTask?.task_id === record.task_id}
+                    onClick={() => handleDiagnose(record)}
+                  >
+                    根因诊断
+                  </Button>
+                </Tooltip>
+                <Tooltip title="使用 Hermes Agent 自主分析">
+                  <Button
+                    size="small"
+                    icon={<ApiOutlined />}
+                    style={{ borderColor: '#722ed1', color: '#722ed1' }}
+                    loading={showHermesModal && hermesTask?.task_id === record.task_id}
+                    onClick={() => handleHermesDiagnose(record)}
+                  >
+                    Hermes
+                  </Button>
+                </Tooltip>
+              </>
+            ) : (
+              <Tooltip title="通过AI助手查询依赖与影响">
+                <Button
+                  type="default"
+                  size="small"
+                  icon={<RobotOutlined />}
+                  onClick={() => handleDiagnose(record)}
+                >
+                  AI咨询
+                </Button>
+              </Tooltip>
+            )}
+          </Space>
         );
       },
     },
@@ -219,6 +300,7 @@ const TaskList: React.FC = () => {
         </Space>
         <Space>
           <Tag color="red">失败/延迟 — 根因诊断</Tag>
+          <Tag color="purple">Hermes Agent 诊断</Tag>
           <Tag color="blue">正常 — AI助手咨询</Tag>
         </Space>
       </div>
@@ -385,6 +467,168 @@ const TaskList: React.FC = () => {
                         <Card size="small" title="🔒 预防措施">
                           <Timeline
                             items={diagnoseResult.prevention.map((p: string) => ({
+                              color: 'green',
+                              children: <Text style={{ fontSize: 13 }}>{p}</Text>,
+                            }))}
+                          />
+                        </Card>
+                      )}
+                    </Space>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Hermes Diagnosis Modal ──────────────────────────────── */}
+      <Modal
+        title={
+          <Space>
+            <ApiOutlined style={{ color: '#722ed1' }} />
+            <span>Hermes Agent 诊断：{hermesTask?.task_name}</span>
+            {hermesTask && (
+              <Tag icon={<ApiOutlined />} color="purple">Hermes Agent</Tag>
+            )}
+          </Space>
+        }
+        open={showHermesModal}
+        onCancel={handleCloseHermesModal}
+        width={760}
+        footer={
+          hermesResult ? [
+            <Button key="close" type="primary" onClick={handleCloseHermesModal}>关闭</Button>,
+          ] : null
+        }
+        destroyOnClose
+      >
+        {hermesLoading && hermesLogs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '60px 0' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16, color: '#999' }}>Hermes Agent 正在自主规划分析路径...</div>
+          </div>
+        )}
+
+        {hermesLogs.length > 0 && !hermesResult && (
+          <div>
+            <Alert
+              type="info"
+              message="Hermes Agent 正在执行根因分析..."
+              description="Agent 正在自主调用技能进行分析，步骤实时更新"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Timeline
+              items={hermesLogs.map((log: any, idx: number) => ({
+                color: log.status === 'completed' ? 'green' : idx === hermesStep ? 'purple' : 'gray',
+                dot: log.status === 'completed' ? <CheckCircleFilled style={{ color: '#52c41a', fontSize: 16 }} /> :
+                     idx === hermesStep ? <LoadingOutlined style={{ color: '#722ed1', fontSize: 16 }} /> :
+                     <ClockCircleFilled style={{ color: '#d9d9d9', fontSize: 16 }} />,
+                children: (
+                  <div style={{ marginBottom: 8, opacity: log.status === 'completed' || idx <= hermesStep ? 1 : 0.4 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      Step {log.step}: {log.action}
+                      {log.status === 'completed' && <Tag color="purple" style={{ fontSize: 11 }}>{log.duration}</Tag>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#666', marginBottom: 2, fontFamily: 'monospace', background: '#f5f5f5', padding: '4px 8px', borderRadius: 4 }}>
+                      {log.detail}
+                    </div>
+                    <div style={{ fontSize: 13, color: log.result.includes('✗') || log.result.includes('❌') ? '#cf1322' : log.result.includes('✓') || log.result.includes('✅') ? '#389e0d' : '#333', whiteSpace: 'pre-wrap' }}>
+                      {log.result}
+                    </div>
+                  </div>
+                ),
+              }))}
+            />
+          </div>
+        )}
+
+        {hermesResult && (
+          <div>
+            <Alert
+              type="success"
+              message={
+                <Space>
+                  <span>✅ Hermes Agent 分析完成</span>
+                  <Tag icon={<ApiOutlined />} color="purple">Hermes Agent</Tag>
+                  <Tag color="blue">根因类型：{hermesResult.root_cause_result || hermesResult.root_cause}</Tag>
+                  <Tag color="green">分析耗时：{hermesResult.auto_time}</Tag>
+                </Space>
+              }
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Tabs
+              defaultActiveKey="summary"
+              items={[
+                {
+                  key: 'summary',
+                  label: '根因总结',
+                  children: (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      <Card size="small" style={{ background: '#f9f0ff', borderLeft: '3px solid #722ed1' }}>
+                        <Text strong>根因结论：</Text>
+                        <div style={{ marginTop: 4, fontSize: 15, fontWeight: 500, color: '#cf1322' }}>
+                          {hermesResult.root_cause_result || hermesResult.root_cause}
+                        </div>
+                      </Card>
+                      <Card size="small" title={<span><BugOutlined style={{ marginRight: 6 }} />溯源链路</span>}>
+                        <pre style={{ whiteSpace: 'pre-wrap', margin: 0, background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 13 }}>
+                          {hermesResult.trace_path}
+                        </pre>
+                      </Card>
+                      <Card size="small" title="根因详情">
+                        <Text>{hermesResult.root_cause_detail}</Text>
+                      </Card>
+                      {(hermesResult.source_system || hermesResult.source_contact) && (
+                        <Descriptions size="small" column={2} bordered>
+                          {hermesResult.source_system && (
+                            <Descriptions.Item label="责任系统">{hermesResult.source_system}</Descriptions.Item>
+                          )}
+                          {hermesResult.source_contact && (
+                            <Descriptions.Item label="联系人">{hermesResult.source_contact}</Descriptions.Item>
+                          )}
+                        </Descriptions>
+                      )}
+                    </Space>
+                  ),
+                },
+                {
+                  key: 'evidence',
+                  label: '核心证据',
+                  children: (
+                    <Card size="small">
+                      <Timeline
+                        items={(hermesResult.evidence || []).map((ev: string, i: number) => ({
+                          color: i < 2 ? 'red' : 'orange',
+                          children: <Text style={{ fontSize: 13 }}>{ev}</Text>,
+                        }))}
+                      />
+                    </Card>
+                  ),
+                },
+                {
+                  key: 'solution',
+                  label: '处理建议',
+                  children: (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {hermesResult.impact_assessment && (
+                        <Alert type="warning" message={hermesResult.impact_assessment} showIcon style={{ marginBottom: 8 }} />
+                      )}
+                      <Card size="small" title={hermesResult.risk_level ? `⚠️ 风险评估：${hermesResult.severity}（${hermesResult.risk_level}）` : '解决方案'}>
+                        <Timeline
+                          items={(hermesResult.solution || []).map((s: string) => ({
+                            color: s.includes('紧急') ? 'red' : s.includes('长效') ? 'blue' : 'gray',
+                            children: <Text style={{ fontSize: 13 }}>{s}</Text>,
+                          }))}
+                        />
+                      </Card>
+                      {hermesResult.prevention && hermesResult.prevention.length > 0 && (
+                        <Card size="small" title="🔒 预防措施">
+                          <Timeline
+                            items={hermesResult.prevention.map((p: string) => ({
                               color: 'green',
                               children: <Text style={{ fontSize: 13 }}>{p}</Text>,
                             }))}

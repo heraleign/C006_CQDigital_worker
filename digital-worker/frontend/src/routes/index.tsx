@@ -40,6 +40,7 @@ const SettingsKnowledgeBase = React.lazy(() => import('@/pages/Settings/Knowledg
 const Notifications = React.lazy(() => import('@/pages/Settings/Notifications'));
 const UserManage = React.lazy(() => import('@/pages/Settings/UserManage'));
 const ConfigPage = React.lazy(() => import('@/pages/Config/ConfigPage'));
+const HermesPlayground = React.lazy(() => import('@/pages/Hermes/Playground'));
 
 const routeConfig = [
   {
@@ -66,6 +67,7 @@ const routeConfig = [
           { path: 'case-library', element: <SuspenseWrapper><CaseLibrary /></SuspenseWrapper> },
           { path: 'suggestion', element: <SuspenseWrapper><Suggestions /></SuspenseWrapper> },
           { path: 'task-list', element: <SuspenseWrapper><TaskList /></SuspenseWrapper> },
+          { path: 'hermes', element: <SuspenseWrapper><HermesPlayground /></SuspenseWrapper> },
         ],
       },
       {

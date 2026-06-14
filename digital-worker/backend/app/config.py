@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     AI_MODEL: str = "gpt-4"
     AI_API_KEY: str = "sk-your-key-here"
 
+    # Hermes Agent Config
+    HERMES_API_URL: str = "http://localhost:7860"
+    HERMES_API_KEY: str = ""
+    HERMES_MODEL: str = "default"
+
     # JWT
     JWT_SECRET: str = "your-jwt-secret-key"
     JWT_ALGORITHM: str = "HS256"

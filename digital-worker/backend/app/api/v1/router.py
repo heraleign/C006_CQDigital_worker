@@ -6,6 +6,7 @@ from app.api.v1.root_cause import router as root_cause_router
 from app.api.v1.monthly import router as monthly_router
 from app.api.v1.assistant import router as assistant_router
 from app.api.v1.system import router as system_router
+from app.api.v1.hermes import router as hermes_router
 
 api_v1_router = APIRouter(prefix="/api/v1")
 
@@ -32,4 +33,8 @@ api_v1_router.include_router(
 api_v1_router.include_router(
     system_router, prefix="/settings",
     tags=["⚙️ Settings — 系统设置"],
+)
+api_v1_router.include_router(
+    hermes_router, prefix="/hermes",
+    tags=["🤖 Hermes Agent — AI编排分析"],
 )

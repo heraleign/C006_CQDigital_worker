@@ -61,6 +61,7 @@ const menuItems = [
       { key: '/root-cause/task-list', icon: <SearchOutlined />, label: '任务列表' },
       { key: '/root-cause/case-library', icon: <AppstoreOutlined />, label: '案例库' },
       { key: '/root-cause/suggestion', icon: <BulbOutlined />, label: '改进建议' },
+      { key: '/root-cause/hermes', icon: <ExperimentOutlined />, label: 'Hermes实验' },
     ],
   },
   {

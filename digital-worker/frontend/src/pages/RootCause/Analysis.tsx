@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Row, Col, Card, Button, Input, Form, Select, message, Spin, Alert, Empty, Steps, Typography, Space, Divider, Timeline, Tag, Descriptions, Table, Tabs } from 'antd';
-import { RobotOutlined, ThunderboltOutlined, LikeOutlined, DislikeOutlined, BookOutlined, ExportOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleFilled, ExperimentOutlined, FileSearchOutlined, DashboardOutlined, ArrowRightOutlined, BugOutlined } from '@ant-design/icons';
+import { Row, Col, Card, Button, Input, Form, Select, message, Spin, Alert, Empty, Steps, Typography, Space, Divider, Timeline, Tag, Descriptions, Table, Tabs, Switch } from 'antd';
+import { RobotOutlined, ThunderboltOutlined, LikeOutlined, DislikeOutlined, BookOutlined, ExportOutlined, CheckCircleFilled, LoadingOutlined, ClockCircleFilled, ExperimentOutlined, FileSearchOutlined, DashboardOutlined, ArrowRightOutlined, BugOutlined, ApiOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { rootCauseApi } from '@/services/rootCause';
+import { hermesApi } from '@/services/hermes';
 import type { AnalysisRecord } from '@/types';
 
 const { TextArea } = Input;
@@ -34,6 +35,14 @@ const presetScenarios = [
     color: '#f6ffed',
     borderColor: '#52c41a',
   },
+  {
+    key: 'hermes_agent',
+    title: '🤖 Hermes Agent 分析',
+    desc: '由 Hermes AI Agent 自主规划并执行分析',
+    icon: <ApiOutlined style={{ fontSize: 24, color: '#722ed1' }} />,
+    color: '#f9f0ff',
+    borderColor: '#722ed1',
+  },
 ];
 
 const Analysis: React.FC = () => {
@@ -49,6 +58,8 @@ const Analysis: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [presetMode, setPresetMode] = useState(false);
   const [activeLogStep, setActiveLogStep] = useState<number | null>(null);
+  const [hermesMode, setHermesMode] = useState(false);
+  const [hermesTaskId, setHermesTaskId] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -63,8 +74,42 @@ const Analysis: React.FC = () => {
     if (!isPreset && !problemDesc.trim()) { message.warning('请输入问题描述'); return; }
     setAnalyzing(true); setCurrentStep(0); setAnalysisResult(null); setAnalysisLogs([]); setError(null);
     setPresetMode(isPreset);
+    setHermesMode(false);
 
     try {
+      // ── Hermes Agent mode ──────────────────────────────────────
+      if (isPreset && presetKey === 'hermes_agent') {
+        const tid = hermesTaskId || problemDesc.trim();
+        if (!tid) { message.warning('请输入任务ID或问题描述'); setAnalyzing(false); return; }
+
+        setAnalyzing(true);
+        setPresetMode(false);
+        setHermesMode(true);
+
+        const payload = {
+          task_id: tid,
+          problem_description: problemDesc,
+          acct_month: acctMonth || undefined,
+        };
+        const res = await hermesApi.analyzeRootCause(payload);
+        const logs = res.data?.analysis_logs || [];
+
+        // Step through logs one by one
+        setAnalysisLogs(logs);
+        for (let i = 0; i < logs.length; i++) {
+          setCurrentStep(i);
+          setActiveLogStep(i);
+          await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+        }
+        setCurrentStep(logs.length);
+        setActiveLogStep(null);
+
+        setAnalysisResult(res.data);
+        setAnalyzing(false);
+        return;
+      }
+
+      // ── Existing flow ──────────────────────────────────────────
       const payload: any = isPreset
         ? { preset_type: presetKey, problem_description: '', acct_month: '', task_id: '' }
         : { problem_description: problemDesc, acct_month: acctMonth || undefined, task_id: taskId || undefined };
@@ -129,8 +174,18 @@ const Analysis: React.FC = () => {
   const handlePresetClick = (key: string) => {
     const preset = presetScenarios.find((p) => p.key === key);
     if (!preset) return;
-    setProblemDesc(preset.desc);
-    handleStartAnalysis(true, key);
+
+    if (key === 'hermes_agent') {
+      // Hermes mode — use the task ID field
+      setProblemDesc(preset.desc);
+      if (!hermesTaskId) {
+        setHermesTaskId('JT_PROD_INST_UPLOAD');
+      }
+      handleStartAnalysis(true, key);
+    } else {
+      setProblemDesc(preset.desc);
+      handleStartAnalysis(true, key);
+    }
   };
 
   const renderLogSteps = () => {
@@ -163,7 +218,7 @@ const Analysis: React.FC = () => {
   };
 
   const renderPresetResult = () => {
-    if (!analysisResult || !presetMode) return null;
+    if (!analysisResult || (!presetMode && !hermesMode)) return null;
     const r = analysisResult;
 
     return (
@@ -173,6 +228,7 @@ const Analysis: React.FC = () => {
           message={
             <Space>
               <span>✅ 分析完成</span>
+              {hermesMode && <Tag icon={<ApiOutlined />} color="purple">Hermes Agent</Tag>}
               <Tag color="blue">根因类型：{r.root_cause}</Tag>
               <Tag color="green">分析耗时：{r.auto_time}</Tag>
             </Space>
@@ -331,7 +387,55 @@ const Analysis: React.FC = () => {
                 <Input placeholder="输入任务ID" value={taskId} onChange={(e) => setTaskId(e.target.value)} />
               </Form.Item>
             </Form>
-            <Button type="primary" size="large" block icon={<ThunderboltOutlined />} onClick={() => handleStartAnalysis(false)} loading={analyzing} disabled={!problemDesc.trim()}>开始分析</Button>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Button type="primary" size="large" block icon={<ThunderboltOutlined />} onClick={() => handleStartAnalysis(false)} loading={analyzing && !hermesMode} disabled={!problemDesc.trim()}>开始分析</Button>
+              <Button
+                type="default"
+                size="large"
+                block
+                icon={<ApiOutlined />}
+                onClick={() => {
+                  if (!problemDesc.trim() && !hermesTaskId && !taskId) {
+                    message.warning('请输入问题描述或任务ID');
+                    return;
+                  }
+                  // Use the form's taskId or hermesTaskId
+                  const tid = hermesTaskId || taskId || problemDesc.trim();
+                  setHermesTaskId(tid);
+                  setAnalyzing(true); setCurrentStep(0); setAnalysisResult(null); setAnalysisLogs([]); setError(null);
+                  setPresetMode(false); setHermesMode(true);
+                  (async () => {
+                    try {
+                      const payload = {
+                        task_id: tid,
+                        problem_description: problemDesc,
+                        acct_month: acctMonth || undefined,
+                      };
+                      const res = await hermesApi.analyzeRootCause(payload);
+                      const logs = res.data?.analysis_logs || [];
+                      setAnalysisLogs(logs);
+                      for (let i = 0; i < logs.length; i++) {
+                        setCurrentStep(i);
+                        setActiveLogStep(i);
+                        await new Promise((r) => setTimeout(r, 400 + Math.random() * 300));
+                      }
+                      setCurrentStep(logs.length);
+                      setActiveLogStep(null);
+                      setAnalysisResult(res.data);
+                    } catch (err: any) {
+                      setError(err?.message || 'Hermes分析失败');
+                    } finally {
+                      setAnalyzing(false);
+                    }
+                  })();
+                }}
+                loading={analyzing && hermesMode}
+                disabled={analyzing}
+                style={{ borderColor: '#722ed1', color: '#722ed1' }}
+              >
+                <ApiOutlined /> Hermes Agent 分析
+              </Button>
+            </Space>
           </Card>
           <Card title="分析历史" size="small">
             {history.length > 0 ? (
@@ -360,7 +464,7 @@ const Analysis: React.FC = () => {
             )}
             {error && <Alert type="error" message={error} showIcon closable style={{ marginBottom: 16 }} />}
 
-            {analyzing && !presetMode && (
+            {analyzing && !presetMode && !hermesMode && (
               <Steps direction="vertical" current={currentStep} items={analysisSteps.map((step, idx) => ({
                 title: step.title,
                 description: `工具: ${step.tool}`,
@@ -369,15 +473,24 @@ const Analysis: React.FC = () => {
               }))} />
             )}
 
-            {analyzing && presetMode && (
+            {(analyzing && presetMode) || (analyzing && hermesMode) ? (
               <div>
-                <Alert type="info" message="正在执行根因分析..." description="按顺序执行分析步骤，实时展示执行日志" showIcon style={{ marginBottom: 16 }} />
+                <Alert
+                  type="info"
+                  message={hermesMode ? "Hermes Agent 正在执行根因分析..." : "正在执行根因分析..."}
+                  description={hermesMode
+                    ? "Hermes Agent 正在自主规划分析路径，调用相关技能进行根因定位"
+                    : "按顺序执行分析步骤，实时展示执行日志"
+                  }
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                />
                 {renderLogSteps()}
               </div>
-            )}
+            ) : null}
 
-            {/* Normal result */}
-            {analysisResult && !presetMode && (
+            {/* Normal result (non-preset, non-hermes) */}
+            {analysisResult && !presetMode && !hermesMode && (
               <div>
                 <Alert type="success" message="分析完成" description="已成功完成根因分析" showIcon style={{ marginBottom: 16 }} />
                 <Card type="inner" title="根因总结" style={{ marginBottom: 12 }}><Text>{analysisResult.root_cause}</Text></Card>
